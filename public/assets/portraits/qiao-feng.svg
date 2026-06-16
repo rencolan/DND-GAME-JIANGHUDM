@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 320">
+  <rect width="240" height="320" fill="#251811"/>
+  <circle cx="120" cy="88" r="50" fill="#b8784f"/>
+  <path d="M64 90c12-62 110-62 120 0-42-22-78-22-120 0z" fill="#130c08"/>
+  <path d="M70 132c25 26 75 28 102 0 34 34 52 84 56 156H12c6-74 24-122 58-156z" fill="#5a2d1c"/>
+  <path d="M64 178c36 34 78 48 128 44" fill="none" stroke="#d8ad5f" stroke-width="10"/>
+  <path d="M88 120c18 17 46 18 66 0" fill="none" stroke="#3a2118" stroke-width="6"/>
+  <circle cx="99" cy="88" r="5" fill="#130c08"/><circle cx="142" cy="88" r="5" fill="#130c08"/>
+  <text x="120" y="302" text-anchor="middle" font-size="22" fill="#f2d48d" font-family="serif">乔峰</text>
+</svg>

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 320">
+  <rect width="240" height="320" fill="#272019"/>
+  <circle cx="120" cy="90" r="50" fill="#cf9f72"/>
+  <path d="M76 66c26-36 70-34 92 0-30-10-60-10-92 0z" fill="#2c2119"/>
+  <path d="M68 144c28 34 76 34 104 0 36 42 50 88 50 144H18c4-60 18-106 50-144z" fill="#8f6c38"/>
+  <path d="M82 154l38 44 38-44 12 134H70l12-134z" fill="#c49a52"/>
+  <circle cx="101" cy="92" r="4" fill="#17110c"/><circle cx="140" cy="92" r="4" fill="#17110c"/>
+  <path d="M94 120c17 12 36 12 53 0" fill="none" stroke="#744a35" stroke-width="4"/>
+  <path d="M120 150v128" stroke="#684725" stroke-width="7"/>
+  <text x="120" y="302" text-anchor="middle" font-size="22" fill="#f2d48d" font-family="serif">虚竹</text>
+</svg>

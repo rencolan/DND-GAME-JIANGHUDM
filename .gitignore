@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.npm-cache/
+
+vite-dev.log
+vite-dev.err.log
+
+netlify-one-html-blob/
+netlify-one-html-eval/
+netlify-single-file-safe/
+old-deploy-files-to-delete/
+
+*.zip
+
+.DS_Store
+Thumbs.db

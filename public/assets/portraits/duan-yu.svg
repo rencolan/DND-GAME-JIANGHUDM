@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 320">
+  <rect width="240" height="320" fill="#2b2119"/>
+  <circle cx="120" cy="92" r="48" fill="#d9b184"/>
+  <path d="M72 90c8-54 92-60 100 0-18-22-73-28-100 0z" fill="#17110c"/>
+  <path d="M74 144c22 42 68 46 92 0 30 28 46 78 48 144H26c4-64 19-112 48-144z" fill="#d9d0b8"/>
+  <path d="M88 158l32 34 34-36 24 132H62l22-130z" fill="#7d9b93"/>
+  <path d="M70 224c40 22 84 22 128 0" fill="none" stroke="#d8ad5f" stroke-width="8"/>
+  <circle cx="100" cy="92" r="4" fill="#17110c"/><circle cx="140" cy="92" r="4" fill="#17110c"/>
+  <path d="M100 118c14 10 28 10 42 0" fill="none" stroke="#7c4b3a" stroke-width="4"/>
+  <text x="120" y="302" text-anchor="middle" font-size="22" fill="#f2d48d" font-family="serif">段誉</text>
+</svg>

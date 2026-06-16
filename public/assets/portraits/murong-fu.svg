@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 320">
+  <rect width="240" height="320" fill="#1f2428"/>
+  <circle cx="120" cy="92" r="46" fill="#d8ad82"/>
+  <path d="M76 88c10-52 82-62 98-6-30-14-64-16-98 6z" fill="#141313"/>
+  <path d="M70 142c28 34 72 34 100 0 32 30 50 78 54 146H18c5-68 20-116 52-146z" fill="#34475b"/>
+  <path d="M84 158l34 58 38-58 26 130H58l26-130z" fill="#c8c1b0"/>
+  <path d="M72 222c42-16 86-16 132 0" fill="none" stroke="#d8ad5f" stroke-width="7"/>
+  <circle cx="101" cy="92" r="4" fill="#141313"/><circle cx="139" cy="92" r="4" fill="#141313"/>
+  <text x="120" y="302" text-anchor="middle" font-size="22" fill="#f2d48d" font-family="serif">慕容复</text>
+</svg>

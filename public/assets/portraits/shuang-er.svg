@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 320">
+  <rect width="240" height="320" fill="#20251f"/>
+  <circle cx="120" cy="94" r="45" fill="#ddb486"/>
+  <path d="M72 94c10-58 88-66 104-8-34-18-70-16-104 8z" fill="#19110e"/>
+  <path d="M68 146c28 34 76 34 104 0 30 34 48 84 52 142H16c5-62 22-108 52-142z" fill="#71876f"/>
+  <path d="M84 164l36 40 38-40 18 124H64l20-124z" fill="#d7c7a3"/>
+  <circle cx="101" cy="94" r="4" fill="#17110c"/><circle cx="139" cy="94" r="4" fill="#17110c"/>
+  <path d="M102 120c13 9 27 9 40 0" fill="none" stroke="#87523e" stroke-width="4"/>
+  <path d="M92 220c24 22 52 22 80 0" fill="none" stroke="#d8ad5f" stroke-width="6"/>
+  <text x="120" y="302" text-anchor="middle" font-size="22" fill="#f2d48d" font-family="serif">双儿</text>
+</svg>

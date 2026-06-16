@@ -1,0 +1,19 @@
+{
+  "name": "江湖 DM",
+  "short_name": "江湖 DM",
+  "description": "武侠 DND AI DM 互动游戏",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#16110d",
+  "theme_color": "#16110d",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "./assets/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

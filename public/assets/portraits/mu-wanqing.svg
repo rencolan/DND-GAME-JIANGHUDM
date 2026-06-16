@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 320">
+  <rect width="240" height="320" fill="#151617"/>
+  <circle cx="120" cy="94" r="44" fill="#d9aa7d"/>
+  <path d="M68 96c8-62 94-72 106-4-34-18-70-18-106 4z" fill="#0c0d0e"/>
+  <path d="M70 138c28 38 72 38 100 0 34 38 50 86 54 150H16c5-66 20-112 54-150z" fill="#17191b"/>
+  <path d="M50 96h140v22H50z" fill="#0b0b0c" opacity=".8"/>
+  <path d="M84 162l36 46 34-46 20 126H64l20-126z" fill="#2b3438"/>
+  <circle cx="101" cy="94" r="4" fill="#17110c"/><circle cx="139" cy="94" r="4" fill="#17110c"/>
+  <path d="M78 226l104-46" stroke="#d8ad5f" stroke-width="7" stroke-linecap="round"/>
+  <text x="120" y="302" text-anchor="middle" font-size="22" fill="#f2d48d" font-family="serif">木婉清</text>
+</svg>
