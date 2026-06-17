@@ -11,6 +11,24 @@ export type LocationUnlockReason = "initial" | "quest" | "clue" | "npc";
 export type RelationshipTier = "stranger" | "familiar" | "trusted" | "confidant" | "devoted";
 export type RelationshipRouteKind = "bond" | "romance" | "retainer";
 export type RelationshipRouteStage = "unawakened" | "met" | "trust" | "partiality" | "follow" | "enduring";
+export type NamelessWandererChapterStage =
+  | "intro"
+  | "first_assignment"
+  | "track_shadow"
+  | "black_assassin_fight"
+  | "tea_house_followup"
+  | "to_gusu"
+  | "gusu_investigation"
+  | "dock_infiltration"
+  | "chapter_resolved";
+export type LocalStoryTrigger =
+  | "onFirstAction"
+  | "onQuestResolved"
+  | "onCombatWin"
+  | "onArrive"
+  | "onUseClue"
+  | "onStoryCheckPassed"
+  | "onStoryCheckFailed";
 
 export interface Ability {
   key: string;

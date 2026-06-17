@@ -16,6 +16,16 @@ import {
 } from "lucide-react";
 import { ChangeEvent, CSSProperties, FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { defaultMartialArts, enemyPresets, initialGameState } from "./data";
+import {
+  NAMELESS_WANDERER_CHAPTER_ID,
+  QUEST_WANDERER_1,
+  QUEST_WANDERER_2,
+  QUEST_WANDERER_3,
+  QUEST_WANDERER_4,
+  QUEST_WANDERER_5,
+  normalizeChapterStateForNameless,
+  resolveNamelessStoryTrigger
+} from "./game/story/namelessWanderer";
 import type {
   Ability,
   ApiConfig,
@@ -59,11 +69,6 @@ const DS_FLASH_MODEL = "deepseek-v4-flash";
 const DS_PRO_MODEL = "deepseek-v4-pro";
 
 const PLAYABLE_ORIGIN_ID = "nameless-wanderer";
-const QUEST_WANDERER_1 = "quest-wanderer-1";
-const QUEST_WANDERER_2 = "quest-wanderer-2";
-const QUEST_WANDERER_3 = "quest-wanderer-3";
-const QUEST_WANDERER_4 = "quest-wanderer-4";
-const QUEST_WANDERER_5 = "quest-wanderer-5";
 const ROUTE_SHUANGER = "shuang-er";
 
 const PROVIDER_OPTIONS: Array<{ value: ApiProvider; label: string }> = [
@@ -371,10 +376,7 @@ function normalizeStoryFlags(raw: string[] | undefined, fallback: string[] = [])
 }
 
 function normalizeChapterState(raw: Partial<ChapterState> | undefined, fallback: ChapterState): ChapterState {
-  return {
-    id: raw?.id || fallback.id,
-    stage: raw?.stage || fallback.stage
-  };
+  return normalizeChapterStateForNameless(raw, fallback);
 }
 
 function normalizeQuestStateMap(quests: Quest[], raw: GameState["questStateMap"] | undefined) {
@@ -396,6 +398,49 @@ function normalizeRumors(raw: Rumor[] | undefined) {
     id: rumor.id || uid("rumor"),
     kind: rumor.kind || "rumor"
   }));
+}
+
+function mergeGamePatches(...patches: Array<GamePatch | undefined>): GamePatch {
+  const merged: GamePatch = {};
+
+  for (const patch of patches) {
+    if (!patch) continue;
+
+    if (patch.hpChange !== undefined) merged.hpChange = (merged.hpChange || 0) + patch.hpChange;
+    if (patch.qiChange !== undefined) merged.qiChange = (merged.qiChange || 0) + patch.qiChange;
+    if (patch.qiMaxChange !== undefined) merged.qiMaxChange = (merged.qiMaxChange || 0) + patch.qiMaxChange;
+    if (patch.qiRecovery !== undefined) merged.qiRecovery = (merged.qiRecovery || 0) + patch.qiRecovery;
+    if (patch.innerInjuryChange !== undefined) merged.innerInjuryChange = (merged.innerInjuryChange || 0) + patch.innerInjuryChange;
+    if (patch.acChange !== undefined) merged.acChange = (merged.acChange || 0) + patch.acChange;
+    if (patch.abilityChanges) merged.abilityChanges = { ...(merged.abilityChanges || {}), ...patch.abilityChanges };
+    if (patch.location !== undefined) merged.location = patch.location;
+    if (patch.timeSlot !== undefined) merged.timeSlot = patch.timeSlot;
+    if (patch.chapter !== undefined) merged.chapter = patch.chapter;
+    if (patch.combatAction !== undefined) merged.combatAction = patch.combatAction;
+    if (patch.enemyName !== undefined) merged.enemyName = patch.enemyName;
+    if (patch.combatUpdate) merged.combatUpdate = { ...(merged.combatUpdate || {}), ...patch.combatUpdate };
+    if (patch.newItem !== undefined) merged.newItem = patch.newItem;
+    if (patch.removeItemId !== undefined) merged.removeItemId = patch.removeItemId;
+    if (patch.relationshipChanges) merged.relationshipChanges = [...(merged.relationshipChanges || []), ...patch.relationshipChanges];
+    if (patch.npcUpdates) merged.npcUpdates = [...(merged.npcUpdates || []), ...patch.npcUpdates];
+    if (patch.questUpdates) merged.questUpdates = [...(merged.questUpdates || []), ...patch.questUpdates];
+    if (patch.systemNote !== undefined) merged.systemNote = patch.systemNote;
+    if (patch.sceneType !== undefined) merged.sceneType = patch.sceneType;
+    if (patch.objectiveUpdate) merged.objectiveUpdate = { ...(merged.objectiveUpdate || {}), ...patch.objectiveUpdate };
+    if ("pendingCheck" in patch) merged.pendingCheck = patch.pendingCheck;
+    if (patch.martialArtLearned !== undefined) merged.martialArtLearned = patch.martialArtLearned;
+    if (patch.martialArtUpdates) merged.martialArtUpdates = [...(merged.martialArtUpdates || []), ...patch.martialArtUpdates];
+    if (patch.chapterStateUpdate) merged.chapterStateUpdate = { ...(merged.chapterStateUpdate || {}), ...patch.chapterStateUpdate };
+    if (patch.storyFlagsAdd) merged.storyFlagsAdd = [...(merged.storyFlagsAdd || []), ...patch.storyFlagsAdd];
+    if (patch.storyFlagsRemove) merged.storyFlagsRemove = [...(merged.storyFlagsRemove || []), ...patch.storyFlagsRemove];
+    if (patch.questStateUpdates) merged.questStateUpdates = [...(merged.questStateUpdates || []), ...patch.questStateUpdates];
+    if (patch.locationUnlockUpdates) merged.locationUnlockUpdates = [...(merged.locationUnlockUpdates || []), ...patch.locationUnlockUpdates];
+    if (patch.npcStoryUpdates) merged.npcStoryUpdates = [...(merged.npcStoryUpdates || []), ...patch.npcStoryUpdates];
+    if (patch.rumorAdd) merged.rumorAdd = [...(merged.rumorAdd || []), ...patch.rumorAdd];
+    if (patch.relationshipRouteUpdates) merged.relationshipRouteUpdates = [...(merged.relationshipRouteUpdates || []), ...patch.relationshipRouteUpdates];
+  }
+
+  return merged;
 }
 
 function normalizeRelationshipRoutes(npcs: Npc[], raw: GameState["relationshipRoutes"] | undefined, fallback: GameState["relationshipRoutes"]) {
@@ -830,9 +875,11 @@ function hasQuest(state: GameState, id: string, status?: Quest["status"]) {
 }
 
 function firstQuestPatchForOrigin(state: GameState): Pick<GamePatch, "questUpdates" | "objectiveUpdate" | "systemNote" | "storyFlagsAdd" | "chapterStateUpdate" | "questStateUpdates"> | undefined {
+  if (state.originId !== PLAYABLE_ORIGIN_ID) return undefined;
+  return resolveNamelessStoryTrigger(state, { kind: "first_action" });
   if (state.quests.some((quest) => quest.status === "active")) return undefined;
 
-  const origin = playableOrigins.find((item) => item.id === state.originId);
+  const origin = playableOrigins.find((item) => item.id === state.originId)!;
   if (!origin) return undefined;
 
   return {
@@ -1559,6 +1606,184 @@ function localDm(action: string, state: GameState, globalUpdate: boolean): { tex
   const q5Active = hasQuest(state, QUEST_WANDERER_5, "active");
   const shuangErRoute = routeState(state, ROUTE_SHUANGER);
   const shuangErStage = shuangErRoute?.stage || "unawakened";
+  const withWorldPatch = (...patches: Array<GamePatch | undefined>) =>
+    mergeGamePatches(advanceWorldLocally(state, globalUpdate), ...patches);
+  const resolveStoryPatch = (trigger: Parameters<typeof resolveNamelessStoryTrigger>[1], ...patches: Array<GamePatch | undefined>) =>
+    withWorldPatch(resolveNamelessStoryTrigger(state, trigger), ...patches);
+
+  if (state.combat.active && state.pendingDamage && !Number.isNaN(damage.total) && q3Active) {
+    const enemyName = state.combat.enemy || "Opponent";
+    const enemyAfter = clamp((state.combat.enemyHp || 0) - damage.total, 0, state.combat.enemyMaxHp || 1);
+    if (enemyAfter <= 0) {
+      return {
+        text: "Combat resolved. The mountain fight is over.",
+        patch: withWorldPatch(
+          {
+            combatUpdate: {
+              enemyHpChange: -damage.total,
+              enemyStatusAdd: damage.total >= 10 ? ["闇插嚭鐮寸唤"] : [],
+              enemyMartialArtUsed: damage.label || state.pendingDamage.label,
+              phase: "ended",
+              roundDelta: 0,
+              stakes: inferCombatStakes(enemyName)
+            },
+            combatAction: "exit",
+            pendingCheck: undefined
+          },
+          resolveNamelessStoryTrigger(state, { kind: "combat_win", enemyName })
+        )
+      };
+    }
+  }
+
+  if (!Number.isNaN(hit.total) && !Number.isNaN(hit.dc) && state.combat.active && hit.success && q3Active) {
+    const enemyName = state.combat.enemy || "Opponent";
+    const enemyAfter = clamp((state.combat.enemyHp || 0) - hit.damageTotal, 0, state.combat.enemyMaxHp || 1);
+    if (enemyAfter <= 0) {
+      return {
+        text: "Combat resolved. The mountain fight is over.",
+        patch: withWorldPatch(
+          {
+            combatUpdate: {
+              enemyHpChange: -hit.damageTotal,
+              enemyStatusAdd: hit.total - hit.dc >= 5 ? ["闇插嚭鐮寸唤"] : [],
+              enemyMartialArtUsed: hit.label,
+              phase: "ended",
+              roundDelta: 0,
+              stakes: inferCombatStakes(enemyName)
+            },
+            combatAction: "exit",
+            pendingCheck: undefined
+          },
+          resolveNamelessStoryTrigger(state, { kind: "combat_win", enemyName })
+        )
+      };
+    }
+  }
+
+  if (!Number.isNaN(hit.total) && !Number.isNaN(hit.dc) && !state.combat.active) {
+    if (q1Active && hit.label?.includes("鏇垮鏍堝帇浣忓墠鍫備贡灞€")) {
+      if (hit.success) {
+        return {
+          text: "Quest advanced from the inn scene.",
+          patch: resolveStoryPatch({ kind: "story_check_passed", checkId: "steady_inn" }, { pendingCheck: undefined })
+        };
+      }
+
+      return {
+        text: "The inn scene is not fully stabilized yet.",
+        patch: withWorldPatch({
+          hpChange: -1,
+          relationshipChanges: [{ name: "鍙屽効", delta: 3, attitude: "鎷呭績" }],
+          pendingCheck: undefined
+        })
+      };
+    }
+
+    if (q2Active && hit.label?.includes("杩戒笂灞遍亾閲岀殑涔︾敓")) {
+      if (hit.success) {
+        return {
+          text: "Quest advanced on the mountain trail.",
+          patch: resolveStoryPatch({ kind: "story_check_passed", checkId: "track_scholar" }, { pendingCheck: undefined })
+        };
+      }
+
+      return {
+        text: "You are still one step behind on the mountain trail.",
+        patch: withWorldPatch({
+          hpChange: -1,
+          pendingCheck: undefined
+        })
+      };
+    }
+
+    if (hit.label?.includes("鏁戜笅瀹㈡爤鎺屾煖")) {
+      return {
+        text: hit.success ? "The innkeeper is saved." : "The rescue attempt falls short.",
+        patch: resolveStoryPatch(
+          hit.success
+            ? { kind: "story_check_passed", checkId: "save_innkeeper" }
+            : { kind: "story_check_failed", checkId: "save_innkeeper" },
+          { pendingCheck: undefined }
+        )
+      };
+    }
+  }
+
+  if (
+    atDali &&
+    q1Active &&
+    shuangErStage === "met" &&
+    /鎺屾煖|瀹㈡爤|甯繖|璺戣吙|鐪嬪簵|閫佽嵂|閫佷俊|鎼揣|鎶ら櫌|鏉傛椿/.test(action)
+  ) {
+    return {
+      text: "Preparing the inn stability check.",
+      patch: resolveStoryPatch({ kind: "story_check_requested", checkId: "steady_inn" })
+    };
+  }
+
+  if (
+    q2Active &&
+    atWuliang &&
+    /鏃犻噺灞眧灞遍亾|杩戒笂|涔︾敓|娈佃獕|鏈ㄥ娓厊鐪嬬湅鍔ㄩ潤|椋庢尝|杩藉幓/.test(action) &&
+    !state.combat.active
+  ) {
+    return {
+      text: "Preparing the mountain trail check.",
+      patch: resolveStoryPatch({ kind: "story_check_requested", checkId: "track_scholar" })
+    };
+  }
+
+  if (
+    state.chapterState.id === NAMELESS_WANDERER_CHAPTER_ID &&
+    atDali &&
+    q4Active &&
+    /娈嬬牬璐﹂〉|璐﹂〉|鍙傜収璐︽湰|鏍稿璐﹂〉|鏍稿娈嬮〉|鏌ョ湅娈嬮〉/.test(action)
+  ) {
+    const cluePatch = resolveNamelessStoryTrigger(state, { kind: "use_clue", clueId: "ledger-fragment" });
+    if (cluePatch) {
+      return {
+        text: "The ledger clue is being cross-checked.",
+        patch: withWorldPatch(cluePatch)
+      };
+    }
+  }
+
+  if (
+    atDali &&
+    q4Active &&
+    shuangErStage === "trust" &&
+    /鎺屾煖|瀹㈡爤涓讳汉|鎶や綇|鏁戜笅|鏁戞帉鏌渱鎸′綇|鏈変汉闂逛簨|鏈変汉鏉ョ牳搴梶淇濅綇瀹㈡爤|鍓嶅爞|鍥炲鏍坾鍥炲幓|鍙屽効/.test(action) &&
+    !hasStoryFlag(state, "route:shuang-er:owner-saved")
+  ) {
+    return {
+      text: "Preparing the innkeeper rescue check.",
+      patch: resolveStoryPatch({ kind: "story_check_requested", checkId: "save_innkeeper" })
+    };
+  }
+
+  if (
+    q5Active &&
+    hasStoryFlag(state, "route:shuang-er:offered") &&
+    shuangErStage === "partiality" &&
+    /鍙屽効|鍚岃|璺熸垜璧皘涓€璧疯蛋|甯︿笂鍙屽効|鎴戞効鎰弢璁╁ス璺熺潃鎴?/.test(action)
+  ) {
+    return {
+      text: "Shuang'er chooses to follow.",
+      patch: resolveStoryPatch({ kind: "story_choice", choiceId: "accept_shuang_er" })
+    };
+  }
+
+  if (
+    q5Active &&
+    hasStoryFlag(state, "route:shuang-er:offered") &&
+    /鍏堜笉甯涓嶅甫濂箌璁╁ス鐣欏湪瀹㈡爤|璁╁ス鍏堢暀|鎴戣嚜宸辫蛋|涓嶅繀璺熺潃|鏆傛椂涓嶇敤鍚岃/.test(action)
+  ) {
+    return {
+      text: "Shuang'er stays at the inn for now.",
+      patch: resolveStoryPatch({ kind: "story_choice", choiceId: "decline_shuang_er" })
+    };
+  }
 
   if (atDali && q1Active && shuangErStage === "unawakened" && /客栈|落脚|疗伤|包扎|歇脚|休息|后院/.test(action)) {
     const supportPatch = buildShuangErSupportPatch(state);

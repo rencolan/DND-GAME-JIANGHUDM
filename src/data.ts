@@ -318,8 +318,7 @@ export const initialGameState: GameState = {
   locations,
   locationUnlocks: {
     dali: "initial",
-    wuliang: "initial",
-    gusu: "initial"
+    wuliang: "initial"
   },
   quests: [],
   questStateMap: {},
