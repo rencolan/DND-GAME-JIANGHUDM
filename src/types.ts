@@ -5,6 +5,12 @@ export type CreationMode = "origin";
 export type SceneType = "temple" | "market" | "tavern" | "brothel" | "inn" | "palace";
 export type ApiProvider = "openai" | "deepseek" | "custom";
 export type MartialCategory = "external" | "internal";
+export type CombatPhase = "opening" | "awaiting_hit_check" | "awaiting_damage_roll" | "resolving_enemy_response" | "ended";
+export type NpcStoryState = "hidden" | "rumored" | "revealed" | "available" | "companion" | "departed";
+export type LocationUnlockReason = "initial" | "quest" | "clue" | "npc";
+export type RelationshipTier = "stranger" | "familiar" | "trusted" | "confidant" | "devoted";
+export type RelationshipRouteKind = "bond" | "romance" | "retainer";
+export type RelationshipRouteStage = "unawakened" | "met" | "trust" | "partiality" | "follow" | "enduring";
 
 export interface Ability {
   key: string;
@@ -122,6 +128,28 @@ export interface ObjectiveHint {
   npc?: string;
 }
 
+export interface ChapterState {
+  id: string;
+  stage: string;
+}
+
+export interface QuestStateNode {
+  id: string;
+  status: Quest["status"];
+  stage?: string;
+}
+
+export interface Rumor {
+  id: string;
+  text: string;
+  kind?: "rumor" | "hook" | "npc_lead" | "location_lead";
+  location?: string;
+  npc?: string;
+  source?: string;
+  discoveredDay?: number;
+  consumed?: boolean;
+}
+
 export interface PendingCheck {
   id: string;
   label: string;
@@ -134,6 +162,17 @@ export interface PendingCheck {
   suggestedAction?: string;
 }
 
+export interface PendingDamage {
+  id: string;
+  martialArtId: string;
+  label: string;
+  damageDice: string;
+  damageBonus?: number;
+  qiCost: number;
+  qiBonusSpend: number;
+  hitText: string;
+}
+
 export interface Message {
   id: string;
   role: MessageRole;
@@ -142,6 +181,10 @@ export interface Message {
 
 export interface CombatState {
   active: boolean;
+  combatId?: string;
+  round?: number;
+  phase?: CombatPhase;
+  stakes?: string;
   enemy?: string;
   enemyHp?: number;
   enemyMaxHp?: number;
@@ -160,11 +203,47 @@ export interface ApiConfig {
   model: string;
 }
 
+export interface AiProposalHook {
+  id?: string;
+  text: string;
+  kind?: Rumor["kind"];
+  location?: string;
+  npc?: string;
+}
+
+export interface AiProposalNpcReaction {
+  name: string;
+  attitude?: string;
+  status?: string;
+  note?: string;
+}
+
+export interface AiProposalPayload {
+  systemNote?: string;
+  sceneType?: SceneType;
+  proposedCheck?: Partial<PendingCheck> & { label: string; dc: number; reason?: string };
+  proposedHooks?: AiProposalHook[];
+  proposedRumors?: AiProposalHook[];
+  proposedNpcReactions?: AiProposalNpcReaction[];
+}
+
+export interface RelationshipRouteState {
+  npcId: string;
+  kind: RelationshipRouteKind;
+  active: boolean;
+  stage: RelationshipRouteStage;
+  allowCompanion?: boolean;
+  supportUnlocked?: string[];
+  note?: string;
+}
+
 export interface GameState {
   setupComplete: boolean;
   originId?: string;
   creationMode?: CreationMode;
   chapter: string;
+  chapterState: ChapterState;
+  storyFlags: string[];
   worldDay: number;
   timeSlot: string;
   actionCount: number;
@@ -172,15 +251,21 @@ export interface GameState {
   character: Character;
   roster: Character[];
   npcs: Npc[];
+  npcStoryState: Record<string, NpcStoryState>;
   locations: LocationNode[];
+  locationUnlocks: Record<string, LocationUnlockReason>;
   quests: Quest[];
+  questStateMap: Record<string, QuestStateNode>;
+  rumors: Rumor[];
   messages: Message[];
   combat: CombatState;
   systemLog: string[];
   sceneType: SceneType;
   objective: ObjectiveHint;
   pendingCheck?: PendingCheck;
+  pendingDamage?: PendingDamage;
   innerInjury?: number;
+  relationshipRoutes: Record<string, RelationshipRouteState>;
 }
 
 export interface GamePatch {
@@ -204,6 +289,9 @@ export interface GamePatch {
     enemyStatusRemove?: string[];
     enemyMartialArtUsed?: string;
     enemyQiCost?: number;
+    phase?: CombatPhase;
+    roundDelta?: number;
+    stakes?: string;
   };
   newItem?: Partial<Item>;
   removeItemId?: string;
@@ -216,4 +304,12 @@ export interface GamePatch {
   pendingCheck?: Partial<PendingCheck> & { label: string; dc: number; reason?: string };
   martialArtLearned?: Partial<MartialArt> & { name: string };
   martialArtUpdates?: Array<Partial<MartialArt> & { id?: string; name?: string }>;
+  chapterStateUpdate?: Partial<ChapterState>;
+  storyFlagsAdd?: string[];
+  storyFlagsRemove?: string[];
+  questStateUpdates?: QuestStateNode[];
+  locationUnlockUpdates?: Array<{ locationId?: string; name?: string; reason: LocationUnlockReason }>;
+  npcStoryUpdates?: Array<{ npcId?: string; name?: string; state: NpcStoryState }>;
+  rumorAdd?: Array<Partial<Rumor> & { text: string }>;
+  relationshipRouteUpdates?: Array<Partial<RelationshipRouteState> & { npcId?: string; name?: string }>;
 }

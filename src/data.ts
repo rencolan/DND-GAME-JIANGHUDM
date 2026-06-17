@@ -269,29 +269,34 @@ export const roster: Character[] = [
 export const locations: LocationNode[] = [
   { id: "dali", name: "大理城", x: 18, y: 68, unlocked: true, current: true, desc: "苍山洱海之间，坊市里总比官道先传出消息。" },
   { id: "wuliang", name: "无量山", x: 34, y: 76, unlocked: true, desc: "山路深曲，草木与脚印都擅长藏话。" },
-  { id: "gusu", name: "姑苏", x: 66, y: 60, unlocked: true, desc: "水路纵横，消息与人心一样绕。" },
+  { id: "gusu", name: "姑苏", x: 66, y: 60, unlocked: false, desc: "水路纵横，消息与人心一样绕。" },
   { id: "shaoshi", name: "少室山", x: 58, y: 30, unlocked: false, desc: "钟声入云，山门下的人未必都是香客。" },
   { id: "yanmen", name: "雁门关", x: 78, y: 20, unlocked: false, desc: "风沙极硬，旧案与血债都埋在关外。" },
   { id: "xingxiu", name: "星宿海", x: 15, y: 24, unlocked: false, desc: "毒雾与怪笑同起，远行者少有归人。" }
 ];
 
 export const npcs: Npc[] = [
-  { id: "duan-yu", name: "段誉", title: "大理世子", portrait: portrait("duan-yu"), location: "大理城", goal: "追索城中异香与旧账的牵连", attitude: "温雅", relationship: 48, lastSeen: "王府书房", status: "未现身", tags: ["大理", "世族"], companion: false, hidden: true, discovered: false },
+  { id: "duan-yu", name: "段誉", title: "大理世子", portrait: portrait("duan-yu"), location: "无量山", goal: "误入山中乱局，还想护着身边的人", attitude: "温雅", relationship: 48, lastSeen: "无量山山道", status: "未现身", tags: ["大理", "世族"], companion: false, hidden: true, discovered: false },
   { id: "qiao-feng", name: "乔峰", title: "丐帮帮主", portrait: portrait("qiao-feng"), location: "雁门关", goal: "追查边关旧案", attitude: "敬重", relationship: 58, lastSeen: "北地酒肆", status: "远行", tags: ["丐帮", "豪侠"], companion: false },
   { id: "murong-fu", name: "慕容复", title: "姑苏公子", portrait: portrait("murong-fu"), location: "姑苏", goal: "寻找英雄帖背后的势力", attitude: "试探", relationship: 38, lastSeen: "燕子坞水榭", status: "观望", tags: ["姑苏", "世家"], companion: false },
   { id: "xu-zhu", name: "虚竹", title: "少林弟子", portrait: portrait("xu-zhu"), location: "少室山", goal: "护送寺中密函", attitude: "和善", relationship: 50, lastSeen: "寺外石阶", status: "未会合", tags: ["少林"], companion: false },
   { id: "wang-yuyan", name: "王语嫣", title: "琅嬛书影", portrait: portrait("wang-yuyan"), location: "姑苏", goal: "辨认银针上的武学门路", attitude: "谨慎", relationship: 46, lastSeen: "藏书楼", status: "可请教", tags: ["武学"], companion: false },
   { id: "a-zhu", name: "阿朱", title: "易容巧手", portrait: portrait("a-zhu"), location: "大理城", goal: "打探黑衣人的真实身份", attitude: "亲近", relationship: 62, lastSeen: "城南茶肆", status: "暗访", tags: ["潜入"], companion: false },
   { id: "a-zi", name: "阿紫", title: "星宿门下", portrait: portrait("a-zi"), location: "星宿海", goal: "盯住值得利用的人与物", attitude: "乖张", relationship: 24, lastSeen: "毒雾边市", status: "行踪不定", tags: ["星宿", "毒"], companion: false, hidden: true, discovered: false },
-  { id: "mu-wanqing", name: "木婉清", title: "黑衣箭影", portrait: portrait("mu-wanqing"), location: "无量山", goal: "追踪一支毒箭的来处", attitude: "信任", relationship: 60, lastSeen: "山道", status: "可支援", tags: ["追踪"], companion: false },
-  { id: "shuang-er", name: "双儿", title: "异路入局", portrait: portrait("shuang-er"), location: "大理城", goal: "照看伤者，留意异乡线索", attitude: "温柔", relationship: 58, lastSeen: "客栈后院", status: "未会合", tags: ["异乡细线索", "疗伤"], companion: false, hidden: true, discovered: false, recruitable: false }
+  { id: "mu-wanqing", name: "木婉清", title: "黑衣箭影", portrait: portrait("mu-wanqing"), location: "无量山", goal: "挟着段誉突围，不让追兵靠近半步", attitude: "冷硬", relationship: 60, lastSeen: "无量山山道", status: "未现身", tags: ["追踪"], companion: false, hidden: true, discovered: false },
+  { id: "shuang-er", name: "双儿", title: "客栈丫鬟", portrait: portrait("shuang-er"), location: "大理城", goal: "照看伤者，替掌柜留心往来人的动静", attitude: "温柔", relationship: 58, lastSeen: "客栈后院", status: "在客栈帮忙", tags: ["客栈", "疗伤", "细心"], companion: false, hidden: true, discovered: false, recruitable: false }
 ];
 
 export const initialGameState: GameState = {
   setupComplete: false,
   originId: "dali-heir",
   creationMode: "origin",
-  chapter: "第一卷：将入江湖",
+  chapter: "第一卷：无量山风波",
+  chapterState: {
+    id: "nameless-wanderer-ch1",
+    stage: "intro"
+  },
+  storyFlags: [],
   worldDay: 1,
   timeSlot: "黄昏",
   actionCount: 0,
@@ -299,17 +304,80 @@ export const initialGameState: GameState = {
   character: roster[0],
   roster,
   npcs,
+  npcStoryState: {
+    "duan-yu": "hidden",
+    "qiao-feng": "rumored",
+    "murong-fu": "rumored",
+    "xu-zhu": "hidden",
+    "wang-yuyan": "rumored",
+    "a-zhu": "hidden",
+    "a-zi": "hidden",
+    "mu-wanqing": "hidden",
+    "shuang-er": "hidden"
+  },
   locations,
+  locationUnlocks: {
+    dali: "initial",
+    wuliang: "initial",
+    gusu: "initial"
+  },
   quests: [],
+  questStateMap: {},
+  rumors: [],
+  relationshipRoutes: {
+    "duan-yu": {
+      npcId: "duan-yu",
+      kind: "bond",
+      active: false,
+      stage: "unawakened",
+      supportUnlocked: []
+    },
+    "mu-wanqing": {
+      npcId: "mu-wanqing",
+      kind: "bond",
+      active: false,
+      stage: "unawakened",
+      supportUnlocked: []
+    },
+    "wang-yuyan": {
+      npcId: "wang-yuyan",
+      kind: "romance",
+      active: false,
+      stage: "unawakened",
+      supportUnlocked: []
+    },
+    "a-zhu": {
+      npcId: "a-zhu",
+      kind: "romance",
+      active: false,
+      stage: "unawakened",
+      supportUnlocked: []
+    },
+    "mu-wanqing-romance": {
+      npcId: "mu-wanqing",
+      kind: "romance",
+      active: false,
+      stage: "unawakened",
+      supportUnlocked: []
+    },
+    "shuang-er": {
+      npcId: "shuang-er",
+      kind: "retainer",
+      active: false,
+      stage: "unawakened",
+      allowCompanion: false,
+      supportUnlocked: []
+    }
+  },
   messages: [
     {
       id: "m0",
       role: "dm",
-      text: "【说书人】风起得很轻，像是在提醒你：真正的麻烦还没露面。先看看眼前的人、物和路，再决定第一步要往哪边走。"
+      text: "【说书人】大理城里人声未歇，无量山那边的风波却已经吹到了客栈门口。你先歇脚，先看人，再决定自己要不要踩进这摊麻烦。"
     }
   ],
   combat: { active: false },
   systemLog: ["系统：首轮行动后才会正式派发第一条任务。"],
-  sceneType: "market",
-  objective: { title: "入局引导", text: "先观察眼前场景，做出你的第一步行动。", location: "大理城" }
+  sceneType: "inn",
+  objective: { title: "入局引导", text: "先在客栈落脚，看看掌柜、双儿和无量山的风声。", location: "大理城" }
 };

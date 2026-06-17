@@ -792,6 +792,14 @@ button {
   animation: scrimIn .18s ease-out both;
 }
 
+.ui-lock-shield {
+  position: absolute;
+  z-index: 95;
+  inset: 0;
+  background: transparent;
+  pointer-events: auto;
+}
+
 .drawer {
   position: absolute;
   z-index: 50;
@@ -1171,6 +1179,25 @@ button {
   line-height: 1.45;
 }
 
+.npc-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.npc-meta em {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 8px;
+  border: 1px solid rgba(242, 212, 141, .2);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
+}
+
 .relation-bar {
   height: 7px;
   margin-top: 9px;
@@ -1181,6 +1208,50 @@ button {
 
 .relation-bar span {
   background: linear-gradient(90deg, var(--red), var(--gold));
+}
+
+.relationship-route-panel {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid rgba(242, 212, 141, .22);
+  border-radius: 8px;
+  background: rgba(22, 17, 12, .72);
+}
+
+.relationship-route-panel h3,
+.relationship-route-panel b,
+.relationship-route-panel p,
+.relationship-route-panel span {
+  margin: 0;
+}
+
+.relationship-route-panel h3 {
+  color: var(--gold-2);
+  font-size: 15px;
+}
+
+.relationship-route-panel article {
+  display: grid;
+  gap: 4px;
+  padding: 8px 0;
+  border-top: 1px dashed rgba(242, 212, 141, .14);
+}
+
+.relationship-route-panel article:first-of-type {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.relationship-route-panel span {
+  color: var(--gold);
+  font-size: 12px;
+}
+
+.relationship-route-panel p {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .map-panel {
