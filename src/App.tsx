@@ -17,6 +17,14 @@ import {
 import { ChangeEvent, CSSProperties, FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { defaultMartialArts, enemyPresets, initialGameState } from "./data";
 import {
+  getNextEnemyPendingCheck,
+  inferCombatStakes as inferCombatStakesFromModule,
+  prepareCombatDamageRoll,
+  resolveCombatDamage,
+  resolveCombatHit,
+  startCombat
+} from "./game/combat";
+import {
   NAMELESS_WANDERER_CHAPTER_ID,
   QUEST_WANDERER_1,
   QUEST_WANDERER_2,
@@ -428,6 +436,7 @@ function mergeGamePatches(...patches: Array<GamePatch | undefined>): GamePatch {
     if (patch.sceneType !== undefined) merged.sceneType = patch.sceneType;
     if (patch.objectiveUpdate) merged.objectiveUpdate = { ...(merged.objectiveUpdate || {}), ...patch.objectiveUpdate };
     if ("pendingCheck" in patch) merged.pendingCheck = patch.pendingCheck;
+    if ("pendingDamage" in patch) merged.pendingDamage = patch.pendingDamage;
     if (patch.martialArtLearned !== undefined) merged.martialArtLearned = patch.martialArtLearned;
     if (patch.martialArtUpdates) merged.martialArtUpdates = [...(merged.martialArtUpdates || []), ...patch.martialArtUpdates];
     if (patch.chapterStateUpdate) merged.chapterStateUpdate = { ...(merged.chapterStateUpdate || {}), ...patch.chapterStateUpdate };
@@ -1426,6 +1435,9 @@ function applyPatchToState(prev: GameState, patch: GamePatch): GameState {
   if ("pendingCheck" in patch) {
     next.pendingCheck = patch.pendingCheck ? makePendingCheck(patch.pendingCheck) : undefined;
   }
+  if ("pendingDamage" in patch) {
+    next.pendingDamage = patch.pendingDamage ? makePendingDamage(patch.pendingDamage) : undefined;
+  }
   if (next.pendingDamage && next.combat.active) {
     next.combat.phase = "awaiting_damage_roll";
   } else if (next.pendingCheck && next.combat.active) {
@@ -1610,6 +1622,35 @@ function localDm(action: string, state: GameState, globalUpdate: boolean): { tex
     mergeGamePatches(advanceWorldLocally(state, globalUpdate), ...patches);
   const resolveStoryPatch = (trigger: Parameters<typeof resolveNamelessStoryTrigger>[1], ...patches: Array<GamePatch | undefined>) =>
     withWorldPatch(resolveNamelessStoryTrigger(state, trigger), ...patches);
+  const mergeCombatStoryPatch = (combatPatch: GamePatch) =>
+    withWorldPatch(
+      combatPatch,
+      combatPatch.combatAction === "exit" && q3Active
+        ? resolveNamelessStoryTrigger(state, { kind: "combat_win", enemyName: state.combat.enemy })
+        : undefined
+    );
+
+  if (state.combat.active && state.pendingDamage && !Number.isNaN(damage.total)) {
+    const combatPatch = resolveCombatDamage(state, damage);
+    return {
+      text: combatPatch.combatAction === "exit"
+        ? "Combat resolved. The fight is over."
+        : "Combat continues into the next exchange.",
+      patch: mergeCombatStoryPatch(combatPatch)
+    };
+  }
+
+  if (!Number.isNaN(hit.total) && !Number.isNaN(hit.dc) && state.combat.active) {
+    const combatPatch = resolveCombatHit(state, hit);
+    return {
+      text: combatPatch.combatAction === "exit"
+        ? "Combat resolved. The fight is over."
+        : hit.success
+          ? "Your strike lands, but the enemy is still in the fight."
+          : "You fail to stabilize the exchange and take the enemy response.",
+      patch: mergeCombatStoryPatch(combatPatch)
+    };
+  }
 
   if (state.combat.active && state.pendingDamage && !Number.isNaN(damage.total) && q3Active) {
     const enemyName = state.combat.enemy || "Opponent";
@@ -2487,9 +2528,45 @@ function localDm(action: string, state: GameState, globalUpdate: boolean): { tex
     };
   }
 
+  if (q3Active && atWuliang && /娈佃獕|鏈ㄥ娓厊杩藉叺|甯繖|鍑烘墜|鎸′綇|杩庢垬|鏁戜汉|鎺╂姢|鍔ㄦ墜/.test(action) && !state.combat.active) {
+    return {
+      text: "Combat begins on the mountain trail.",
+      patch: withWorldPatch(
+        startCombat(state, "黑衣刺客", {
+          label: "Respond to the assassin's opening move",
+          abilityKey: "dex",
+          martialArtId: "enemy-dagger",
+          dc: 14,
+          reason: "The pursuer is already closing in. You need to stop the opening pressure now.",
+          risk: "If you fail, you take the first heavy blow and lose room on the mountain path.",
+          enemyIntent: "The pursuer wants to break you first, then drag the others away.",
+          suggestedAction: "Brace, intercept, or counter before the enemy takes full control.",
+          systemNote: "The chase on the mountain path has become an open fight."
+        })
+      )
+    };
+  }
+
   const namedEnemy = enemyPresets.find((preset) => action.includes(preset.name));
+  const enterCombatPatch = namedEnemy || (/鍑烘墜|鍔ㄦ墜|浜ゆ墜|杩庢垬|姣旀|寮€鎵搢鎷兼枟|鏉€杩囧幓|鏀诲嚮/.test(action) && !state.combat.active)
+    ? withWorldPatch(startCombat(state, namedEnemy?.name || "榛戣。鍒哄"), firstQuestPatch)
+    : undefined;
+  if (enterCombatPatch && !state.combat.active) {
+    return {
+      text: namedEnemy ? `Combat begins against ${namedEnemy.name}.` : "Combat begins.",
+      patch: enterCombatPatch
+    };
+  }
   const enterCombat = namedEnemy || (/出手|动手|交手|迎战|比武|开打|拼斗|杀过去|攻击/.test(action) && !state.combat.active);
   if (enterCombat && !state.combat.active) {
+    const enemyName = namedEnemy?.name || "榛戣。鍒哄";
+    return {
+      text: namedEnemy ? `Combat begins against ${enemyName}.` : "Combat begins.",
+      patch: withWorldPatch(startCombat(state, enemyName), firstQuestPatch)
+    };
+  }
+
+  if (false && enterCombat && !state.combat.active) {
     const enemyName = namedEnemy?.name || "黑衣刺客";
     const preset = findEnemyPreset(enemyName);
     return {
@@ -3074,35 +3151,22 @@ export function App() {
   }
 
   function queuePendingDamage(hitText: string, art: MartialArt, qiBonusSpend: number) {
-    const pendingDamage = makePendingDamage({
-      martialArtId: art.id,
-      label: art.name,
-      damageDice: art.damageDice,
-      damageBonus: art.damageBonus,
-      qiCost: art.category === "internal" ? art.baseQiCost : 0,
-      qiBonusSpend,
-      hitText
-    });
+    const pendingDamagePatch = prepareCombatDamageRoll(art, hitText, qiBonusSpend);
+    const pendingDamage = pendingDamagePatch.pendingDamage ? makePendingDamage(pendingDamagePatch.pendingDamage) : undefined;
 
     if (!pendingDamage) return;
 
-    setGame((prev) => ({
-      ...prev,
-      pendingCheck: undefined,
-      pendingDamage,
-      combat: prev.combat.active
-        ? { ...prev.combat, phase: "awaiting_damage_roll" }
-        : prev.combat,
-      character: {
-        ...prev.character,
-        qi: clamp(prev.character.qi - qiBonusSpend, 0, prev.character.maxQi)
-      },
-      messages: [
-        ...prev.messages,
-        { id: uid("dice"), role: "dice", text: hitText },
+    setGame((prev) => {
+      const patched = applyPatchToState(prev, pendingDamagePatch);
+      return {
+        ...patched,
+        messages: [
+          ...patched.messages,
+          { id: uid("dice"), role: "dice", text: hitText },
         { id: uid("system"), role: "system", text: `命中已确认，请掷 ${art.name} 的伤害骰：${art.damageDice}${art.damageBonus ? ` +${art.damageBonus}` : ""}` }
-      ]
-    }));
+        ]
+      };
+    });
   }
 
   async function submitDamageResult(text: string, pendingDamage: PendingDamage) {

@@ -320,6 +320,7 @@ export interface GamePatch {
   sceneType?: SceneType;
   objectiveUpdate?: Partial<ObjectiveHint>;
   pendingCheck?: Partial<PendingCheck> & { label: string; dc: number; reason?: string };
+  pendingDamage?: Partial<PendingDamage> & { martialArtId: string; label: string; damageDice: string; hitText: string };
   martialArtLearned?: Partial<MartialArt> & { name: string };
   martialArtUpdates?: Array<Partial<MartialArt> & { id?: string; name?: string }>;
   chapterStateUpdate?: Partial<ChapterState>;
