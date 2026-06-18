@@ -15,7 +15,13 @@ import {
   X
 } from "lucide-react";
 import { CSSProperties, FormEvent, useMemo } from "react";
-import { defaultMartialArts, enemyPresets, initialGameState } from "../data";
+import {
+  enemyPresets,
+  initialGameState,
+  martialArtCatalog,
+  originTemplates,
+  routeGuides
+} from "../data";
 import {
   getNextEnemyPendingCheck,
   inferCombatStakes as inferCombatStakesFromModule,
@@ -83,7 +89,6 @@ const DEEPSEEK_CHAT_COMPLETIONS_URL = `${DEEPSEEK_BASE_URL}/chat/completions`;
 const DS_FLASH_MODEL = "deepseek-v4-flash";
 const DS_PRO_MODEL = "deepseek-v4-pro";
 
-export const PLAYABLE_ORIGIN_ID = "nameless-wanderer";
 const ROUTE_SHUANGER = "shuang-er";
 
 const PROVIDER_OPTIONS: Array<{ value: ApiProvider; label: string }> = [
@@ -107,43 +112,9 @@ const PROVIDER_DEFAULTS: Record<ApiProvider, { apiUrl: string; model: string }> 
   }
 };
 
-const playableOrigins: OriginTemplate[] = [
-  {
-    id: PLAYABLE_ORIGIN_ID,
-    name: "无名客",
-    desc: "从江湖底层一路滚过来的无名刀客，信的是眼力、脚力和活下去的狠劲。",
-    qiStart: 2,
-    intro: "你一路风尘赶到大理，原想只在城里客栈歇一晚、混口热饭，却发现这地方前堂后院都不太像寻常客栈。街上有人在谈无量山的乱子，店里也像在等什么消息，而替你端水换药的那位小丫鬟，比许多老江湖还沉得住气。",
-    setupHint: "外功起手，适合追踪、近身缠斗和从乱局里咬出一条活路。",
-    firstQuest: {
-      title: "客栈歇脚",
-      text: "先在大理客栈落脚，看清掌柜、双儿和无量山那股越传越近的风声。",
-      location: "大理城",
-      npc: "双儿"
-    },
-    equipmentNames: ["缺口长刀", "灰布短打", "旧酒葫芦"],
-    openingItem: {
-      id: "wanderer-shard",
-      name: "旧路引",
-      desc: "一路赶到大理时剩下的旧路引，边角都被风尘磨软了。",
-      count: 1,
-      type: "quest"
-    },
-    martialArts: [...defaultMartialArts.jianghu]
-  }
-];
+const playableOrigins: OriginTemplate[] = originTemplates;
 
-const playableRouteGuides: Record<string, { sceneType: SceneType; objective: GameState["objective"]; intro: string }> = {
-  [PLAYABLE_ORIGIN_ID]: {
-    sceneType: "inn",
-    objective: {
-      title: "入局引导",
-      text: "先在大理客栈落脚，看看前堂后院的人、事和那股正往无量山聚过去的风声。",
-      location: "大理城"
-    },
-    intro: playableOrigins[0].intro
-  }
-};
+const playableRouteGuides: Record<string, { sceneType: SceneType; objective: GameState["objective"]; intro: string }> = routeGuides;
 
 const abilityLabels: Record<string, string> = {
   str: "力道",
@@ -217,14 +188,7 @@ const tabItems: Array<{ id: DrawerTab; label: string; icon: typeof User }> = [
 ];
 
 const martialLookup = new Map<string, MartialArt>();
-[
-  ...defaultMartialArts.dali,
-  ...defaultMartialArts.jianghu,
-  ...defaultMartialArts.shaolin,
-  ...defaultMartialArts.enemy,
-  ...defaultMartialArts.bosses,
-  ...defaultMartialArts.legends
-].forEach((art) => {
+martialArtCatalog.forEach((art) => {
   martialLookup.set(art.id, art);
   martialLookup.set(art.name, art);
 });
@@ -294,6 +258,13 @@ function parseDamageDice(damageDice: string) {
     rolls,
     total: rolls.reduce((sum, value) => sum + value, 0)
   };
+}
+
+function doubleDamageDice(damageDice: string) {
+  const match = damageDice.trim().toLowerCase().match(/^(\d+)d(\d+)$/);
+  if (!match) return damageDice;
+
+  return `${Number(match[1]) * 2}d${match[2]}`;
 }
 
 export function readJson<T>(key: string, fallback: T): T {
@@ -536,23 +507,53 @@ function normalizeMartialArt(raw: Partial<MartialArt> & { name: string }): Marti
     grade: raw.grade || template?.grade || "入门",
     category,
     linkedAbility: raw.linkedAbility || template?.linkedAbility || "str",
-    effect: raw.effect || template?.effect || "一式既出，重在火候与拿捏。",
     damageDice: raw.damageDice || template?.damageDice || "1d4",
     damageBonus: raw.damageBonus ?? template?.damageBonus,
     baseQiCost: category === "internal" ? raw.baseQiCost ?? template?.baseQiCost ?? 1 : 0,
-    risk: raw.risk || template?.risk || "贸然出手，容易被看出路数。",
     source: raw.source || template?.source || "江湖所得"
   };
 }
 
+function normalizeInventory(raw: Item[] | undefined) {
+  return (raw || [])
+    .filter((item) => {
+      const legacyType = (item as { type?: string })?.type;
+      return item && legacyType !== "weapon" && legacyType !== "armor" && legacyType !== "accessory";
+    })
+    .map((item) => {
+      const legacyType = (item as { type?: string }).type;
+      const inferredType: Item["type"] = legacyType === "quest"
+        ? "quest"
+        : legacyType === "consumable" || item.usable || typeof item.hpRestore === "number" || typeof item.qiRestore === "number"
+          ? "consumable"
+          : "quest";
+      return {
+        id: item.id,
+        name: item.name,
+        desc: item.desc,
+        count: item.count,
+        type: inferredType,
+        hpRestore: item.hpRestore,
+        qiRestore: item.qiRestore,
+        usable: item.usable
+      };
+    });
+}
+
 function relabelAbilities(character: Character): Character {
+  const {
+    inventory,
+    equipment: _legacyEquipment,
+    ...rest
+  } = character as Character & { inventory?: Item[]; equipment?: unknown };
   return {
-    ...character,
+    ...rest,
     abilities: (character.abilities || []).map((ability) => ({
       ...ability,
       label: abilityLabels[ability.key] || ability.label
     })),
-    martialArts: (character.martialArts || []).map((art) => normalizeMartialArt({ ...art, name: art.name }))
+    martialArts: (character.martialArts || []).map((art) => normalizeMartialArt({ ...art, name: art.name })),
+    inventory: normalizeInventory(inventory)
   };
 }
 
@@ -694,32 +695,6 @@ function makeCharacterFromOrigin(name: string, origin: OriginTemplate, packageVa
       { key: "wis", label: abilityLabels.wis, value: packageValues[5] }
     ],
     martialArts: origin.martialArts.map((art) => normalizeMartialArt({ ...art, name: art.name, source: origin.name })),
-    equipment: {
-      weapon: {
-        id: uid("weapon"),
-        name: origin.equipmentNames[0],
-        desc: "随身兵刃。",
-        count: 1,
-        type: "weapon",
-        equipable: true
-      },
-      armor: {
-        id: uid("armor"),
-        name: origin.equipmentNames[1],
-        desc: "便于行走江湖的护具。",
-        count: 1,
-        type: "armor",
-        equipable: true
-      },
-      accessory: {
-        id: uid("acc"),
-        name: origin.equipmentNames[2],
-        desc: "带着来路与故事的随身物。",
-        count: 1,
-        type: "accessory",
-        equipable: true
-      }
-    },
     inventory: [
       {
         id: "medicine",
@@ -769,11 +744,9 @@ function hasQuest(state: GameState, id: string, status?: Quest["status"]) {
 }
 
 function firstQuestPatchForOrigin(state: GameState): Pick<GamePatch, "questUpdates" | "objectiveUpdate" | "systemNote" | "storyFlagsAdd" | "chapterStateUpdate" | "questStateUpdates"> | undefined {
-  if (state.originId !== PLAYABLE_ORIGIN_ID) return undefined;
-  return resolveNamelessStoryTrigger(state, { kind: "first_action" });
   if (state.quests.some((quest) => quest.status === "active")) return undefined;
 
-  const origin = playableOrigins.find((item) => item.id === state.originId)!;
+  const origin = playableOrigins.find((item) => item.id === state.originId) || playableOrigins[0];
   if (!origin) return undefined;
 
   return {
@@ -855,12 +828,13 @@ ${JSON.stringify(state.character.abilities.map((ability) => ({
 [角色武学]
 ${JSON.stringify(state.character.martialArts.map((art) => ({
     name: art.name,
+    grade: art.grade,
+    source: art.source,
     category: art.category,
     linkedAbility: art.linkedAbility,
     damageDice: art.damageDice,
     damageBonus: art.damageBonus || 0,
-    qiCost: art.baseQiCost,
-    effect: art.effect
+    qiCost: art.baseQiCost
   })), null, 2)}
 
 [已见 NPC 摘要]
@@ -1158,7 +1132,6 @@ function applyPatchToState(prev: GameState, patch: GamePatch): GameState {
       desc: patch.newItem.desc || "新得之物，尚待派上用场。",
       count: patch.newItem.count || 1,
       type: patch.newItem.type,
-      equipable: patch.newItem.equipable,
       usable: patch.newItem.usable,
       hpRestore: patch.newItem.hpRestore,
       qiRestore: patch.newItem.qiRestore
@@ -2552,7 +2525,7 @@ function SetupScreen(props: {
         <header className="setup-title">
           <p>江湖 DM 新版开局</p>
           <h1>入局之前</h1>
-          <span>这一版先只做一条能跑通的“无名客”主线。挑一组命数，直接进江湖。</span>
+          <span>挑一个出身，选一组命数，先从大理、无量或少室山附近踏进这趟江湖。</span>
         </header>
 
         {onContinue && (
@@ -2957,6 +2930,26 @@ export function LegacyApp({ session }: { session: GameSession }) {
       ...(customPrompt ? [{ role: "user", content: customPrompt }] : []),
       { role: "user", content: playerAction }
     ];
+    const outputLines = [
+      `【判定】${label}`,
+      `模式：${rollMode === "advantage" ? `优势(${first}/${second})` : rollMode === "disadvantage" ? `劣势(${first}/${second})` : "常规"}`,
+      `d20：${picked}`,
+      `加值：${mod >= 0 ? "+" : ""}${mod}`,
+      ...(!game.combat.active ? [`内力：${qiBonusSpend}（判定 +${qiBonus}）`] : []),
+      check ? `总计：${total} / DC ${check.dc}` : `总计：${total}`,
+      check ? `结果：${success ? "成功" : "失败"}` : "结果：仅记录本次掷骰",
+      ...(combatAttack && picked === 20 ? ["暴击：是"] : [])
+    ];
+    const outputLines = [
+      `【判定】${label}`,
+      `模式：${rollMode === "advantage" ? `优势(${first}/${second})` : rollMode === "disadvantage" ? `劣势(${first}/${second})` : "常规"}`,
+      `d20：${picked}`,
+      `加值：${mod >= 0 ? "+" : ""}${mod}`,
+      ...(!game.combat.active ? [`内力：${qiBonusSpend}（判定 +${qiBonus}）`] : []),
+      check ? `总计：${total} / DC ${check.dc}` : `总计：${total}`,
+      check ? `结果：${success ? "成功" : "失败"}` : "结果：仅记录本次掷骰",
+      ...(combatAttack && picked === 20 ? ["暴击：是"] : [])
+    ];
 
     const response = await fetch(endpoint.url, {
       method: "POST",
@@ -3204,7 +3197,7 @@ export function LegacyApp({ session }: { session: GameSession }) {
   }
 
   */
-  function rollDice(
+  function legacyRollDice(
     label: string,
     mod: number,
     check?: PendingCheck,
@@ -3217,7 +3210,8 @@ export function LegacyApp({ session }: { session: GameSession }) {
     if (rolling || busy) return;
 
     const sendToDm = options.sendToDm ?? Boolean(check);
-    const qiBonusSpend = clamp(options.qiBonusSpend ?? qiInvest, 0, game.character.qi);
+    const combatAttack = game.combat.active && game.combat.phase === "awaiting_hit_check";
+    const qiBonusSpend = game.combat.active ? 0 : clamp(options.qiBonusSpend ?? qiInvest, 0, game.character.qi);
     const qiBonus = qiInvestBonus(qiBonusSpend);
     const first = Math.ceil(Math.random() * 20);
     const second = Math.ceil(Math.random() * 20);
@@ -3244,6 +3238,7 @@ export function LegacyApp({ session }: { session: GameSession }) {
       check ? `结果：${success ? "成功" : "失败"}` : "结果：仅记录本次掷骰"
     ];
 
+    const outputLines = lines;
     lockUi(1400);
     setRolling({ label, total, detail: `${modeText} · d20=${picked} · 内力 +${qiBonus}` });
     setQiInvest(0);
@@ -3255,11 +3250,11 @@ export function LegacyApp({ session }: { session: GameSession }) {
       closePanels();
 
       if (sendToDm) {
-        if (check && success && options.martialArt) {
-          queuePendingDamageSession(lines.join("\n"), options.martialArt, qiBonusSpend);
+        if (check && success && options.martialArt && combatAttack) {
+          queuePendingDamageSession(outputLines.join("\n"), options.martialArt, qiBonusSpend, picked === 20);
           return;
         }
-        void submitDiceResultSession(lines.join("\n"), qiBonusSpend);
+        void submitDiceResultSession(outputLines.join("\n"), qiBonusSpend);
         return;
       }
 
@@ -3269,17 +3264,19 @@ export function LegacyApp({ session }: { session: GameSession }) {
           ...prev.character,
           qi: clamp(prev.character.qi - qiBonusSpend, 0, prev.character.maxQi)
         },
-        messages: [...prev.messages, { id: uid("dice"), role: "dice", text: lines.join("\n") }]
+        messages: [...prev.messages, { id: uid("dice"), role: "dice", text: outputLines.join("\n") }]
       }));
     }, 1180);
   }
 
-  function rollDamageDice(pendingDamage: PendingDamage) {
+  function legacyRollDamageDice(pendingDamage: PendingDamage) {
     if (rolling || busy) return;
 
-    const { rolls, total } = parseDamageDice(pendingDamage.damageDice);
+    const actualDamageDice = pendingDamage.isCritical ? doubleDamageDice(pendingDamage.damageDice) : pendingDamage.damageDice;
+    const { rolls, total } = parseDamageDice(actualDamageDice);
     const bonus = pendingDamage.damageBonus || 0;
     const final = total + bonus;
+    const damageText = `【伤害】${pendingDamage.label} ${actualDamageDice} => [${rolls.join(" + ")}]${bonus ? ` + ${bonus}` : ""} = ${final}${pendingDamage.isCritical ? "\n暴击：是" : ""}`;
     const text = `【伤害】${pendingDamage.label} ${pendingDamage.damageDice} => [${rolls.join(" + ")}]${bonus ? ` + ${bonus}` : ""} = ${final}`;
 
     lockUi(1400);
@@ -3294,7 +3291,115 @@ export function LegacyApp({ session }: { session: GameSession }) {
       setRollMode("normal");
       setRolling(null);
       closePanels();
-      void submitDamageResultSession(text, pendingDamage);
+      void submitDamageResultSession(damageText, pendingDamage);
+    }, 1180);
+  }
+
+  function rollDice(
+    label: string,
+    mod: number,
+    check?: PendingCheck,
+    options: {
+      martialArt?: MartialArt;
+      qiBonusSpend?: number;
+      sendToDm?: boolean;
+    } = {}
+  ) {
+    if (rolling || busy) return;
+
+    const sendToDm = options.sendToDm ?? Boolean(check);
+    const combatInitiativeRoll = game.combat.active && game.combat.phase === "opening";
+    const combatAttack = game.combat.active && game.combat.phase === "awaiting_hit_check";
+    const qiBonusSpend = game.combat.active ? 0 : clamp(options.qiBonusSpend ?? qiInvest, 0, game.character.qi);
+    const qiBonus = qiInvestBonus(qiBonusSpend);
+    const first = Math.ceil(Math.random() * 20);
+    const second = Math.ceil(Math.random() * 20);
+    const picked = rollMode === "advantage"
+      ? Math.max(first, second)
+      : rollMode === "disadvantage"
+        ? Math.min(first, second)
+        : first;
+    const total = picked + mod + qiBonus;
+    const isCritical = combatAttack && picked === 20;
+    const isAutoFail = Boolean(check) && picked === 1;
+    const success = check
+      ? (isAutoFail ? false : (isCritical ? true : total >= check.dc))
+      : undefined;
+    const modeText = rollMode === "advantage"
+      ? `优势（${first}/${second}）`
+      : rollMode === "disadvantage"
+        ? `劣势（${first}/${second}）`
+        : "常规";
+    const outputLines = [
+      `【判定】${label}`,
+      `模式：${modeText}`,
+      `d20=${picked}`,
+      `加值：${mod >= 0 ? "+" : ""}${mod}`,
+      ...(!game.combat.active ? [`内力：${qiBonusSpend}（判定 +${qiBonus}）`] : []),
+      check ? `总计：${total} / DC ${check.dc}` : `总计：${total}`,
+      check ? `结果：${success ? "成功" : "失败"}` : "结果：仅记录本次掷骰",
+      ...(isCritical ? ["暴击：是"] : []),
+      ...(isAutoFail ? ["大失败：d20=1"] : []),
+      ...(combatInitiativeRoll ? ["阶段：先攻"] : []),
+      ...(combatAttack ? ["阶段：攻击"] : [])
+    ];
+
+    lockUi(1400);
+    setRolling({
+      label,
+      total,
+      detail: `${modeText} · d20=${picked}${game.combat.active ? "" : ` · 内力 +${qiBonus}`}`
+    });
+    setQiInvest(0);
+    closePanels();
+
+    window.setTimeout(() => {
+      setRollMode("normal");
+      setRolling(null);
+      closePanels();
+
+      if (sendToDm) {
+        if (check && success && options.martialArt && combatAttack) {
+          queuePendingDamageSession(outputLines.join("\n"), options.martialArt, qiBonusSpend, isCritical);
+          return;
+        }
+        void submitDiceResultSession(outputLines.join("\n"), qiBonusSpend);
+        return;
+      }
+
+      setGame((prev) => ({
+        ...prev,
+        character: {
+          ...prev.character,
+          qi: clamp(prev.character.qi - qiBonusSpend, 0, prev.character.maxQi)
+        },
+        messages: [...prev.messages, { id: uid("dice"), role: "dice", text: outputLines.join("\n") }]
+      }));
+    }, 1180);
+  }
+
+  function rollDamageDice(pendingDamage: PendingDamage) {
+    if (rolling || busy) return;
+
+    const actualDamageDice = pendingDamage.isCritical ? doubleDamageDice(pendingDamage.damageDice) : pendingDamage.damageDice;
+    const { rolls, total } = parseDamageDice(actualDamageDice);
+    const bonus = pendingDamage.damageBonus || 0;
+    const final = total + bonus;
+    const damageText = `【伤害】${pendingDamage.label} ${actualDamageDice} => [${rolls.join(" + ")}]${bonus ? ` + ${bonus}` : ""} = ${final}${pendingDamage.isCritical ? "\n暴击：是" : ""}`;
+
+    lockUi(1400);
+    setRolling({
+      label: `${pendingDamage.label}伤害`,
+      total: final,
+      detail: `${actualDamageDice} = ${rolls.join(" + ")}${bonus ? ` + ${bonus}` : ""}`
+    });
+    closePanels();
+
+    window.setTimeout(() => {
+      setRollMode("normal");
+      setRolling(null);
+      closePanels();
+      void submitDamageResultSession(damageText, pendingDamage);
     }, 1180);
   }
 
@@ -3324,7 +3429,7 @@ export function LegacyApp({ session }: { session: GameSession }) {
     setGame(normalizeGameStateEngine({
       ...structuredClone(initialGameState),
       setupComplete: true,
-      originId: PLAYABLE_ORIGIN_ID,
+      originId: selectedOrigin.id,
       creationMode: "origin",
       sceneType: guide?.sceneType || "market",
       currentCharacterId: hero.id,
@@ -3339,6 +3444,10 @@ export function LegacyApp({ session }: { session: GameSession }) {
         { id: "m0", role: "dm", text: guide?.intro || selectedOrigin.intro },
         { id: uid("system"), role: "system", text: `${hero.name}以“${selectedOrigin.name}”的身份入局。` }
       ],
+      chapterState: {
+        id: selectedOrigin.id === playableOrigins[0]?.id ? NAMELESS_WANDERER_CHAPTER_ID : `origin:${selectedOrigin.id}`,
+        stage: "intro"
+      },
       objective: guide?.objective || initialGameState.objective,
       systemLog: ["入局引导已开始，首轮行动后才会正式派发任务。"]
     }));
@@ -3530,11 +3639,12 @@ export function LegacyApp({ session }: { session: GameSession }) {
 
                 {selectedInventoryMartial?.id === art.id && (
                   <div className="martial-detail-card">
-                    <p>{art.effect}</p>
                     <small>类别：{art.category === "internal" ? "内功" : "外功"}</small>
+                    <small>等级：{art.grade}</small>
+                    <small>来源：{art.source}</small>
+                    <small>对应属性：{art.linkedAbility.toUpperCase()}</small>
                     <small>伤害：{art.damageDice}{art.damageBonus ? ` +${art.damageBonus}` : ""}</small>
                     <small>耗气：{art.category === "internal" ? art.baseQiCost : 0}</small>
-                    <small>来源：{art.source}</small>
                   </div>
                 )}
               </article>
@@ -3721,7 +3831,6 @@ export function LegacyApp({ session }: { session: GameSession }) {
         <article className="system-section">
           <header>
             <b>接口设置</b>
-            <span>Provider 只做分类参考，API URL 和 Model 由你手动填写。</span>
           </header>
 
           <label>
@@ -3808,7 +3917,6 @@ export function LegacyApp({ session }: { session: GameSession }) {
         <article className="system-section">
           <header>
             <b>江湖配乐</b>
-            <span>已接入你放进 `sucai` 里的曲子，进游戏后会尝试自动播放。</span>
           </header>
 
           <section className="save-panel">
@@ -3829,7 +3937,6 @@ export function LegacyApp({ session }: { session: GameSession }) {
               />
             </label>
             <p>当前曲目：Seven Peaks at Twilight</p>
-            <p>重新开启时会做一个短淡入，不会一下子糊你一脸。</p>
           </section>
         </article>
       </section>
@@ -3859,12 +3966,26 @@ export function LegacyApp({ session }: { session: GameSession }) {
 
   const currentCheck = game.pendingCheck;
   const pendingDamage = game.pendingDamage;
+  const combatInitiative = game.combat.active && game.combat.phase === "opening";
+  const combatAttack = game.combat.active && game.combat.phase === "awaiting_hit_check";
   const awaitingDamage = Boolean(pendingDamage);
   const controlsBlocked = uiLocked || Boolean(rolling);
+  const dexAbility = game.character.abilities.find((ability) => ability.key === "dex");
+  const dexMod = dexAbility ? abilityMod(dexAbility.value) : 0;
+  const pendingDamageDice = pendingDamage
+    ? (pendingDamage.isCritical ? doubleDamageDice(pendingDamage.damageDice) : pendingDamage.damageDice)
+    : undefined;
+  const pendingCheckTag = combatInitiative ? "待先攻" : combatAttack ? "待攻击" : "待判定";
+  const pendingCheckReason = combatInitiative
+    ? "先攻固定掷身法（DEX）。胜则你先出手，败则敌方先动。"
+    : combatAttack
+      ? "先做命中判定；命中后再掷伤害。d20=20 暴击，d20=1 必失手。"
+      : currentCheck?.reason;
+  const pendingCheckAction = combatInitiative ? "掷先攻" : combatAttack ? "掷攻击" : "进行判定";
 
   return (
     <main className={`app ${game.combat.active ? "combat" : ""}`} style={appStyle}>
-      <audio ref={audioRef} src={BGM_SRC} preload="auto" />
+      <audio ref={audioRef} src={BGM_SRC} preload="auto" loop />
       {uiLocked && <div className="ui-lock-shield" aria-hidden="true" />}
       <header className="app-header">
         <div>
@@ -3904,23 +4025,24 @@ export function LegacyApp({ session }: { session: GameSession }) {
 
         {pendingDamage && (
           <section className="pending-check">
-            <span>待掷伤害</span>
-            <b>{pendingDamage.label} · {pendingDamage.damageDice}{pendingDamage.damageBonus ? ` +${pendingDamage.damageBonus}` : ""}</b>
-            <p>命中已经确认，现在请掷出这招真正的伤害骰。</p>
-            {!!pendingDamage.qiCost && <small>本次命中后将消耗内力：{pendingDamage.qiCost}</small>}
+            <span>待伤害</span>
+            <b>{pendingDamage.label} · {pendingDamageDice}{pendingDamage.damageBonus ? ` +${pendingDamage.damageBonus}` : ""}</b>
+            <p>命中已经确认，现在只差掷出这招的伤害骰。</p>
+            {pendingDamage.isCritical && <small>暴击已触发：本次只翻倍伤害骰，不翻倍固定加值。</small>}
+            {!!pendingDamage.qiCost && <small>命中后耗气：{pendingDamage.qiCost}</small>}
             <button type="button" onClick={openPendingCheck}>掷伤害</button>
           </section>
         )}
 
-        {game.pendingCheck && !pendingDamage && (
+        {currentCheck && !pendingDamage && (
           <section className="pending-check">
-            <span>待判定</span>
-            <b>{game.pendingCheck.label} · DC {game.pendingCheck.dc}</b>
-            <p>{game.pendingCheck.reason}</p>
-            {game.pendingCheck.enemyIntent && <small>敌人意图：{game.pendingCheck.enemyIntent}</small>}
-            {game.pendingCheck.risk && <small>失败风险：{game.pendingCheck.risk}</small>}
-            {game.pendingCheck.suggestedAction && <small>可尝试：{game.pendingCheck.suggestedAction}</small>}
-            <button type="button" onClick={openPendingCheck}>进行判定</button>
+            <span>{pendingCheckTag}</span>
+            <b>{currentCheck.label} · DC {currentCheck.dc}</b>
+            <p>{pendingCheckReason}</p>
+            {currentCheck.enemyIntent && <small>敌人意图：{currentCheck.enemyIntent}</small>}
+            {currentCheck.risk && <small>失败风险：{currentCheck.risk}</small>}
+            {currentCheck.suggestedAction && !game.combat.active && <small>可尝试：{currentCheck.suggestedAction}</small>}
+            <button type="button" onClick={openPendingCheck}>{pendingCheckAction}</button>
           </section>
         )}
 
@@ -3950,8 +4072,9 @@ export function LegacyApp({ session }: { session: GameSession }) {
             <>
               <article className="dice-check">
                 <span>伤害结算</span>
-                <b>{pendingDamage.label} · {pendingDamage.damageDice}{pendingDamage.damageBonus ? ` +${pendingDamage.damageBonus}` : ""}</b>
-                <p>命中已经确认，现在掷出这招真正的伤害骰。</p>
+                <b>{pendingDamage.label} · {pendingDamageDice}{pendingDamage.damageBonus ? ` +${pendingDamage.damageBonus}` : ""}</b>
+                <p>命中已经确认，现在掷出真正生效的伤害骰。</p>
+                {pendingDamage.isCritical && <small>暴击：伤害骰翻倍，固定加值不翻倍。</small>}
                 {!!pendingDamage.qiCost && <small>命中后耗气：{pendingDamage.qiCost}</small>}
               </article>
 
@@ -3962,87 +4085,137 @@ export function LegacyApp({ session }: { session: GameSession }) {
               >
                 <span>
                   {pendingDamage.label}
-                  <small>点击掷出 {pendingDamage.damageDice}{pendingDamage.damageBonus ? ` +${pendingDamage.damageBonus}` : ""}</small>
+                  <small>点击掷出 {pendingDamageDice}{pendingDamage.damageBonus ? ` +${pendingDamage.damageBonus}` : ""}</small>
                 </span>
-                <b>{pendingDamage.damageDice}</b>
+                <b>{pendingDamageDice}</b>
               </button>
             </>
           ) : (
             <>
-          {currentCheck && (
-            <article className="dice-check">
-              <span>当前判定</span>
-              <b>{currentCheck.label} · DC {currentCheck.dc}</b>
-              <p>{currentCheck.reason}</p>
-              {currentCheck.risk && <small>失败风险：{currentCheck.risk}</small>}
-            </article>
-          )}
-
-          <div className="segmented">
-            <button className={rollMode === "disadvantage" ? "active" : ""} onClick={() => setRollMode("disadvantage")}>劣势</button>
-            <button className={rollMode === "normal" ? "active" : ""} onClick={() => setRollMode("normal")}>常规</button>
-            <button className={rollMode === "advantage" ? "active" : ""} onClick={() => setRollMode("advantage")}>优势</button>
-          </div>
-
-          <section className={`qi-invest ${lowQi ? "low" : ""}`}>
-            <div>
-              <span>额外投入内力</span>
-              <b>{qiInvest} / {qiLimit}</b>
-            </div>
-            <input
-              type="range"
-              min="0"
-              max={qiLimit}
-              value={qiInvest}
-              onChange={(event) => setQiInvest(Number(event.target.value))}
-            />
-            <p>每投入 2 点内力，判定 +1。内功只在命中后扣除招式耗气，外功不扣基础内力。</p>
-          </section>
-
-          <b className="dice-section-title">属性判定</b>
-          {game.character.abilities.map((ability) => (
-            <button
-              key={ability.key}
-              className={currentCheck?.abilityKey === ability.key ? "recommended" : ""}
-              onClick={() => rollDice(
-                ability.label,
-                abilityMod(ability.value),
-                currentCheck,
-                { qiBonusSpend: qiInvest, sendToDm: Boolean(currentCheck) }
+              {currentCheck && (
+                <article className="dice-check">
+                  <span>{combatInitiative ? "先攻判定" : combatAttack ? "攻击判定" : "当前判定"}</span>
+                  <b>{currentCheck.label} · DC {currentCheck.dc}</b>
+                  <p>{pendingCheckReason}</p>
+                  {currentCheck.risk && <small>失败风险：{currentCheck.risk}</small>}
+                </article>
               )}
-            >
-              <span>{ability.label}</span>
-              <b>{abilityMod(ability.value) >= 0 ? "+" : ""}{abilityMod(ability.value)}</b>
-            </button>
-          ))}
 
-          <b className="dice-section-title">武学攻击</b>
-          {game.character.martialArts.map((art) => {
-            const ability = game.character.abilities.find((entry) => entry.key === art.linkedAbility);
-            const mod = ability ? abilityMod(ability.value) : 0;
-            const costOnHit = art.category === "internal" ? art.baseQiCost : 0;
-            const canUse = qiInvest <= game.character.qi && (art.category === "external" || game.character.qi >= qiInvest + costOnHit);
+              <div className="segmented">
+                <button className={rollMode === "disadvantage" ? "active" : ""} onClick={() => setRollMode("disadvantage")}>劣势</button>
+                <button className={rollMode === "normal" ? "active" : ""} onClick={() => setRollMode("normal")}>常规</button>
+                <button className={rollMode === "advantage" ? "active" : ""} onClick={() => setRollMode("advantage")}>优势</button>
+              </div>
 
-            return (
-              <button
-                key={art.id}
-                className={`martial-roll ${currentCheck?.martialArtId === art.id || currentCheck?.abilityKey === art.linkedAbility ? "recommended" : ""}`}
-                disabled={!canUse}
-                onClick={() => rollDice(
-                  `${art.name}（${ability?.label || "属性"}）`,
-                  mod,
-                  currentCheck,
-                  { martialArt: art, qiBonusSpend: qiInvest, sendToDm: Boolean(currentCheck) }
-                )}
-              >
-                <span>
-                  {art.name}
-                  <small>{art.category === "internal" ? "内功" : "外功"} · 伤害 {art.damageDice}{art.damageBonus ? ` +${art.damageBonus}` : ""}</small>
-                </span>
-                <b>{mod >= 0 ? "+" : ""}{mod} · 耗{costOnHit}</b>
-              </button>
-            );
-          })}
+              {!game.combat.active && (
+                <section className={`qi-invest ${lowQi ? "low" : ""}`}>
+                  <div>
+                    <span>额外投入内力</span>
+                    <b>{qiInvest} / {qiLimit}</b>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max={qiLimit}
+                    value={qiInvest}
+                    onChange={(event) => setQiInvest(Number(event.target.value))}
+                  />
+                  <p>每投入 2 点内力，判定 +1。只有非战斗检定会使用这部分加成。</p>
+                </section>
+              )}
+
+              {combatInitiative ? (
+                <>
+                  <b className="dice-section-title">先攻</b>
+                  <button
+                    className="recommended"
+                    onClick={() => rollDice("先攻（身法）", dexMod, currentCheck, { sendToDm: Boolean(currentCheck) })}
+                  >
+                    <span>
+                      {dexAbility?.label || "身法"}
+                      <small>固定用 DEX 掷 d20 决定谁先动</small>
+                    </span>
+                    <b>{dexMod >= 0 ? "+" : ""}{dexMod}</b>
+                  </button>
+                </>
+              ) : combatAttack ? (
+                <>
+                  <b className="dice-section-title">武学攻击</b>
+                  {game.character.martialArts.map((art) => {
+                    const ability = game.character.abilities.find((entry) => entry.key === art.linkedAbility);
+                    const mod = ability ? abilityMod(ability.value) : 0;
+                    const costOnHit = art.category === "internal" ? art.baseQiCost : 0;
+                    const canUse = art.category === "external" || game.character.qi >= costOnHit;
+
+                    return (
+                      <button
+                        key={art.id}
+                        className={`martial-roll ${currentCheck?.martialArtId === art.id || currentCheck?.abilityKey === art.linkedAbility ? "recommended" : ""}`}
+                        disabled={!canUse}
+                        onClick={() => rollDice(
+                          art.name,
+                          mod,
+                          currentCheck,
+                          { martialArt: art, sendToDm: Boolean(currentCheck) }
+                        )}
+                      >
+                        <span>
+                          {art.name}
+                          <small>{ability?.label || "对应属性"} · 伤害 {art.damageDice}{art.damageBonus ? ` +${art.damageBonus}` : ""}</small>
+                        </span>
+                        <b>{mod >= 0 ? "+" : ""}{mod}{costOnHit ? ` · 耗气 ${costOnHit}` : ""}</b>
+                      </button>
+                    );
+                  })}
+                </>
+              ) : (
+                <>
+                  <b className="dice-section-title">属性判定</b>
+                  {game.character.abilities.map((ability) => (
+                    <button
+                      key={ability.key}
+                      className={currentCheck?.abilityKey === ability.key ? "recommended" : ""}
+                      onClick={() => rollDice(
+                        ability.label,
+                        abilityMod(ability.value),
+                        currentCheck,
+                        { qiBonusSpend: qiInvest, sendToDm: Boolean(currentCheck) }
+                      )}
+                    >
+                      <span>{ability.label}</span>
+                      <b>{abilityMod(ability.value) >= 0 ? "+" : ""}{abilityMod(ability.value)}</b>
+                    </button>
+                  ))}
+
+                  <b className="dice-section-title">武学攻击</b>
+                  {game.character.martialArts.map((art) => {
+                    const ability = game.character.abilities.find((entry) => entry.key === art.linkedAbility);
+                    const mod = ability ? abilityMod(ability.value) : 0;
+                    const costOnHit = art.category === "internal" ? art.baseQiCost : 0;
+                    const canUse = qiInvest <= game.character.qi && (art.category === "external" || game.character.qi >= qiInvest + costOnHit);
+
+                    return (
+                      <button
+                        key={art.id}
+                        className={`martial-roll ${currentCheck?.martialArtId === art.id || currentCheck?.abilityKey === art.linkedAbility ? "recommended" : ""}`}
+                        disabled={!canUse}
+                        onClick={() => rollDice(
+                          `${art.name}（${ability?.label || "属性"}）`,
+                          mod,
+                          currentCheck,
+                          { martialArt: art, qiBonusSpend: qiInvest, sendToDm: Boolean(currentCheck) }
+                        )}
+                      >
+                        <span>
+                          {art.name}
+                          <small>{art.category === "internal" ? "内功" : "外功"} · 伤害 {art.damageDice}{art.damageBonus ? ` +${art.damageBonus}` : ""}</small>
+                        </span>
+                        <b>{mod >= 0 ? "+" : ""}{mod} · 耗气 {costOnHit}</b>
+                      </button>
+                    );
+                  })}
+                </>
+              )}
             </>
           )}
         </section>

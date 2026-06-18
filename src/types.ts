@@ -42,11 +42,9 @@ export interface MartialArt {
   grade: string;
   category: MartialCategory;
   linkedAbility: string;
-  effect: string;
   damageDice: string;
   damageBonus?: number;
   baseQiCost: number;
-  risk: string;
   source: string;
 }
 
@@ -55,17 +53,10 @@ export interface Item {
   name: string;
   desc: string;
   count: number;
-  type?: "weapon" | "armor" | "accessory" | "consumable" | "quest";
+  type: "consumable" | "quest";
   hpRestore?: number;
   qiRestore?: number;
-  equipable?: boolean;
   usable?: boolean;
-}
-
-export interface Equipment {
-  weapon: Item;
-  armor: Item;
-  accessory: Item;
 }
 
 export interface Character {
@@ -80,7 +71,6 @@ export interface Character {
   ac: number;
   abilities: Ability[];
   martialArts: MartialArt[];
-  equipment: Equipment;
   inventory: Item[];
   originId?: string;
   isCustom?: boolean;
@@ -99,7 +89,6 @@ export interface OriginTemplate {
     location: string;
     npc?: string;
   };
-  equipmentNames: [string, string, string];
   openingItem?: Item;
   martialArts: MartialArt[];
 }
@@ -189,6 +178,7 @@ export interface PendingDamage {
   qiCost: number;
   qiBonusSpend: number;
   hitText: string;
+  isCritical?: boolean;
 }
 
 export interface Message {

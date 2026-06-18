@@ -31,7 +31,8 @@ const item = (id: string, name: string, desc: string, count = 1, extra: Partial<
   name,
   desc,
   count,
-  ...extra
+  ...extra,
+  type: extra.type || "quest"
 });
 
 const art = (
@@ -40,7 +41,7 @@ const art = (
   category: MartialArt["category"],
   linkedAbility: string,
   damageDice: string,
-  effect: string,
+  _summary: string,
   baseQiCost: number,
   extra: Partial<MartialArt> = {}
 ): MartialArt => ({
@@ -49,13 +50,16 @@ const art = (
   grade: "入门",
   category,
   linkedAbility,
-  effect,
   damageDice,
   baseQiCost,
-  risk: category === "internal" ? "内力不足时难以稳定施展。" : "硬接强敌时容易露出破绽。",
   source: "开局所学",
   ...extra
 });
+
+const defaultInventory = () => ([
+  item("medicine", "金疮药", "恢复 8 点生命。", 2, { type: "consumable", usable: true, hpRestore: 8 }),
+  item("qi-pill", "行气散", "恢复 2 点内力。", 1, { type: "consumable", usable: true, qiRestore: 2 })
+]);
 
 const makeCharacter = (
   id: string,
@@ -63,7 +67,6 @@ const makeCharacter = (
   title: string,
   focus: [number, number, number, number, number, number],
   qi: number,
-  equipmentNames: [string, string, string],
   martialArts: MartialArt[],
   extra: Partial<Character> = {}
 ): Character => ({
@@ -85,30 +88,59 @@ const makeCharacter = (
     { key: "wis", label: "心境", value: focus[5] }
   ],
   martialArts,
-  equipment: {
-    weapon: item(`${id}-weapon`, equipmentNames[0], "随身兵刃。", 1, { type: "weapon", equipable: true }),
-    armor: item(`${id}-armor`, equipmentNames[1], "随身护具。", 1, { type: "armor", equipable: true }),
-    accessory: item(`${id}-acc`, equipmentNames[2], "带着来历与故事的随身物。", 1, { type: "accessory", equipable: true })
-  },
-  inventory: [
-    item("medicine", "金疮药", "恢复 8 点生命。", 2, { type: "consumable", usable: true, hpRestore: 8 }),
-    item("qi-pill", "行气散", "恢复 2 点内力。", 1, { type: "consumable", usable: true, qiRestore: 2 })
-  ],
+  inventory: defaultInventory(),
   ...extra
 });
 
 export const defaultMartialArts = {
   dali: [
-    art("yiyang-zhi", "一阳指", "internal", "int", "1d8", "凝气一点，隔空伤敌。", 1, { grade: "家传" }),
-    art("dali-xinfa", "大理心法", "internal", "wis", "1d4", "以内息调匀经脉，适合守势与回气。", 1, { grade: "家传" })
+    art("yiyang-zhi", "一阳指", "internal", "int", "1d8", "凝气一点，隔空伤敌。", 1, { grade: "家传", source: "大理段氏" }),
+    art("dali-xinfa", "大理心法", "internal", "wis", "1d4", "以内息调匀经脉，适合稳守回气。", 1, { grade: "家传", source: "大理段氏" }),
+    art("duanjia-jianfa", "段家剑法", "external", "dex", "1d6", "剑路规整轻灵，讲究快进快收。", 0, { grade: "入门", source: "大理段氏" }),
+    art("wuluo-qingyan-zhang", "五罗轻烟掌", "external", "dex", "1d6", "掌影轻快，适合贴身连出。", 0, { grade: "熟练", source: "大理段氏" })
   ],
   jianghu: [
-    art("jianghu-daolu", "江湖刀路", "external", "str", "1d6", "刀法直接，适合抢身位与逼退对手。", 0, { grade: "粗豪" }),
-    art("xiangwei-qinggong", "巷尾轻功", "external", "dex", "1d4", "借步换位，偏重闪身与缠斗。", 0, { grade: "入门" })
+    art("jianghu-daolu", "江湖刀路", "external", "str", "1d6", "刀法直接，适合抢身位与逼退对手。", 0, { grade: "粗豪", source: "江湖旧路" }),
+    art("xiangwei-qinggong", "巷尾轻功", "external", "dex", "1d4", "借步换位，偏重闪身与缠斗。", 0, { grade: "入门", source: "江湖旧路" })
   ],
   shaolin: [
-    art("shaolin-changquan", "少林长拳", "external", "str", "1d4", "拳架平正，适合稳步压近。", 0, { grade: "正宗" }),
-    art("shaolin-neigong", "少林内功", "internal", "wis", "1d6", "调息护体，适合以内劲硬接。", 1, { grade: "正宗" })
+    art("shaolin-changquan", "少林长拳", "external", "str", "1d4", "拳架平正，适合稳步压近。", 0, { grade: "正宗", source: "少林" }),
+    art("shaolin-neigong", "少林内功", "internal", "wis", "1d6", "调息护体，适合以内劲硬接。", 1, { grade: "正宗", source: "少林" }),
+    art("luohan-quan", "罗汉拳", "external", "str", "1d6", "拳势沉稳厚实，适合正面交手。", 0, { grade: "入门", source: "少林" }),
+    art("weituo-chu", "韦陀杵", "external", "str", "1d8", "劲力直贯，讲究一击压人。", 0, { grade: "熟练", source: "少林" })
+  ],
+  wuliang: [
+    art("wuliang-jianfa", "无量剑法", "external", "dex", "1d6", "剑法轻快多变，擅长早期试锋。", 0, { grade: "入门", source: "无量剑派" }),
+    art("zhuifeng-jianlu", "追风剑路", "external", "dex", "1d8", "剑路紧追不放，连刺连封。", 0, { grade: "熟练", source: "无量剑派" })
+  ],
+  beggar: [
+    art("taizu-changquan", "太祖长拳", "external", "str", "1d6", "拳法朴实狠辣，讲究一招一式都能打人。", 0, { grade: "入门", source: "丐帮旧传" }),
+    art("lianhua-zhang", "莲花掌", "external", "str", "1d8", "掌势连绵，出手稳而不断。", 0, { grade: "熟练", source: "丐帮旧传" }),
+    art("dagou-bangfa", "打狗棒法", "external", "str", "2d6", "棒影起落，专打正面空隙。", 0, { grade: "中高阶", source: "丐帮绝传" }),
+    art("xianglong-shibazhang", "降龙十八掌", "external", "str", "2d8", "掌力雄浑刚猛，讲究正面压垮对手。", 1, { grade: "绝学", source: "乔峰所传" })
+  ],
+  gusu: [
+    art("murong-jianfa", "慕容剑法", "external", "dex", "1d8", "剑势秀雅细密，步步紧跟。", 0, { grade: "熟练", source: "姑苏慕容" }),
+    art("canhe-zhi", "参合指", "internal", "int", "1d8", "指劲聚于一点，阴柔中带狠厉。", 1, { grade: "上乘前置", source: "姑苏慕容" })
+  ],
+  xingxiu: [
+    art("xingxiu-duzhang", "星宿毒掌", "internal", "con", "1d8", "掌风夹杂邪气，贴身最是阴损。", 1, { grade: "熟练", source: "星宿派" }),
+    art("sanyin-wugong-zhua", "三阴蜈蚣爪", "external", "dex", "1d8", "爪法刁钻歹毒，专取近身要害。", 0, { grade: "熟练", source: "星宿派" })
+  ],
+  xiaoyao: [
+    art("xiaoyao-zhang", "逍遥掌", "internal", "wis", "1d8", "掌力绵里藏针，看似轻缓却能透劲。", 1, { grade: "熟练", source: "逍遥派" }),
+    art("beiming-shengong", "北冥神功", "internal", "wis", "2d6", "真气回旋流转，出手后仍余势不断。", 2, { grade: "高阶", source: "逍遥派" }),
+    art("lingbo-weibu", "凌波微步", "external", "dex", "1d8", "步法飘忽，出手如在空隙间穿行。", 1, { grade: "高阶", source: "逍遥派" }),
+    art("tianshan-liuyang-zhang", "天山六阳掌", "internal", "wis", "2d6", "掌力堂皇正大，层层递进。", 2, { grade: "高阶", source: "逍遥派" }),
+    art("tianshan-zhemei-shou", "天山折梅手", "external", "dex", "2d6", "近身连变，以巧劲破门而入。", 1, { grade: "高阶", source: "逍遥派" }),
+    art("shengsi-fu", "生死符", "internal", "wis", "2d6", "寒劲灌入经脉，出手便要叫人变色。", 2, { grade: "高阶", source: "逍遥派" }),
+    art("xiaowuxiang-gong", "小无相功", "internal", "wis", "2d6", "劲力无声无相，运转时最显深厚。", 2, { grade: "绝学", source: "逍遥派" })
+  ],
+  villains: [
+    art("ezui-jian", "鳄嘴剪", "external", "str", "1d10", "怪兵一合而下，狠劲十足。", 0, { grade: "上乘前置", source: "四大恶人" }),
+    art("ewei-hengsao", "鳄尾横扫", "external", "str", "1d8", "横扫硬砸，最适合压身抢位。", 0, { grade: "熟练", source: "四大恶人" }),
+    art("heshe-bada", "鹤蛇八打", "external", "dex", "1d8", "招式细碎凌厉，连击极快。", 0, { grade: "上乘前置", source: "四大恶人" }),
+    art("hezhua-qinna", "鹤爪擒拿", "external", "dex", "1d10", "手法阴毒迅急，专拿关节与咽喉。", 0, { grade: "上乘前置", source: "四大恶人" })
   ],
   enemy: [
     art("enemy-dagger", "黑衣短刺", "external", "dex", "1d6", "贴身抢攻，专取空门。", 0, { grade: "敌招", source: "黑衣刺客" }),
@@ -122,13 +154,14 @@ export const defaultMartialArts = {
     art("you-tietou", "铁头硬撞", "external", "str", "1d10", "蛮横冲阵，靠一口狠劲硬撞开门户。", 0, { grade: "凶招", source: "游坦之" }),
     art("you-shengsi", "生死符反劲", "internal", "wis", "2d6", "内劲乱窜时反扑而出，寒意缠身。", 1, { grade: "旁门", source: "游坦之" }),
     art("jiu-huoyandao", "火焰刀", "internal", "int", "3d8", "无形刀气横空劈落，炽烈霸道。", 3, { grade: "绝学", source: "鸠摩智" }),
-    art("jiu-xiaowuxiang", "小无相功", "internal", "wis", "2d6", "无声转劲，借他门路数化为己用。", 2, { grade: "绝学", source: "鸠摩智" }),
     art("jiu-longzhao", "龙爪擒拿", "external", "str", "2d8", "擒、锁、拧一气呵成，逼人近身崩盘。", 0, { grade: "上乘", source: "鸠摩智" })
   ],
   legends: [
-    art("liumai-shenjian", "六脉神剑", "internal", "int", "6d8", "以内力化作剑气，一线穿空。", 3, { grade: "绝学", source: "剧情习得" })
+    art("liumai-shenjian", "六脉神剑", "internal", "int", "4d8", "以内力化作剑气，一线穿空。", 3, { grade: "绝学", source: "剧情习得" })
   ]
 } as const;
+
+export const martialArtCatalog: MartialArt[] = Object.values(defaultMartialArts).flatMap((entries) => [...entries]);
 
 export const enemyPresets = [
   {
@@ -144,112 +177,102 @@ export const enemyPresets = [
     tags: ["前期试探", "快攻"]
   },
   {
+    id: "zuo-zimu",
+    name: "左子穆",
+    hp: 30,
+    maxHp: 30,
+    qi: 4,
+    maxQi: 4,
+    ac: 13,
+    abilities: { str: 11, dex: 14, con: 12, int: 11, cha: 10, wis: 11 },
+    martialArts: defaultMartialArts.wuliang.filter((entry) => ["wuliang-jianfa", "zhuifeng-jianlu"].includes(entry.id)),
+    tags: ["前期剑客", "无量剑派", "试锋"]
+  },
+  {
+    id: "yue-laosan",
+    name: "岳老三",
+    hp: 36,
+    maxHp: 36,
+    qi: 4,
+    maxQi: 4,
+    ac: 13,
+    abilities: { str: 16, dex: 11, con: 14, int: 8, cha: 9, wis: 10 },
+    martialArts: defaultMartialArts.villains.filter((entry) => ["ezui-jian", "ewei-hengsao"].includes(entry.id)),
+    tags: ["粗暴压制", "四大恶人", "重击"]
+  },
+  {
+    id: "yun-zhonghe",
+    name: "云中鹤",
+    hp: 40,
+    maxHp: 40,
+    qi: 5,
+    maxQi: 5,
+    ac: 14,
+    abilities: { str: 11, dex: 16, con: 13, int: 10, cha: 11, wis: 10 },
+    martialArts: defaultMartialArts.villains.filter((entry) => ["heshe-bada", "hezhua-qinna"].includes(entry.id)),
+    tags: ["高机动刺杀", "四大恶人", "诡快"]
+  },
+  {
     id: "ding-chunqiu",
     name: "丁春秋",
-    hp: 46,
-    maxHp: 46,
+    hp: 52,
+    maxHp: 52,
     qi: 12,
     maxQi: 12,
     ac: 15,
     abilities: { str: 12, dex: 14, con: 14, int: 18, cha: 13, wis: 16 },
-    martialArts: defaultMartialArts.bosses.filter(entry => ["ding-huagong", "ding-sanxiao", "ding-zhaixing"].includes(entry.id)),
-    tags: ["星宿老怪", "毒功", "控场"]
+    martialArts: defaultMartialArts.bosses.filter((entry) => ["ding-huagong", "ding-sanxiao", "ding-zhaixing"].includes(entry.id)),
+    tags: ["邪门宗师", "毒功", "控场"]
   },
   {
     id: "you-tanzhi",
     name: "游坦之",
-    hp: 40,
-    maxHp: 40,
-    qi: 8,
-    maxQi: 8,
-    ac: 13,
+    hp: 48,
+    maxHp: 48,
+    qi: 10,
+    maxQi: 10,
+    ac: 14,
     abilities: { str: 15, dex: 12, con: 16, int: 9, cha: 8, wis: 11 },
-    martialArts: defaultMartialArts.bosses.filter(entry => ["you-bingcan", "you-tietou", "you-shengsi"].includes(entry.id)),
-    tags: ["寒毒", "莽攻", "缠斗"]
+    martialArts: defaultMartialArts.bosses.filter((entry) => ["you-bingcan", "you-tietou", "you-shengsi"].includes(entry.id)),
+    tags: ["寒毒莽攻", "重压", "缠斗"]
   },
   {
     id: "jiu-mozhi",
     name: "鸠摩智",
-    hp: 52,
-    maxHp: 52,
-    qi: 16,
-    maxQi: 16,
+    hp: 62,
+    maxHp: 62,
+    qi: 18,
+    maxQi: 18,
     ac: 16,
     abilities: { str: 14, dex: 15, con: 15, int: 17, cha: 14, wis: 18 },
-    martialArts: defaultMartialArts.bosses.filter(entry => ["jiu-huoyandao", "jiu-xiaowuxiang", "jiu-longzhao"].includes(entry.id)),
-    tags: ["国师", "高内力", "爆发"]
+    martialArts: [...defaultMartialArts.bosses.filter((entry) => ["jiu-huoyandao", "jiu-longzhao"].includes(entry.id)), defaultMartialArts.xiaoyao.find((entry) => entry.id === "xiaowuxiang-gong")!],
+    tags: ["终局宗师", "高内力", "爆发"]
   }
 ] as const;
 
 export const originTemplates: OriginTemplate[] = [
   {
-    id: "dali-heir",
-    name: "大理世族",
-    desc: "识礼数、通人情，起手内力较稳，适合先礼后兵。",
-    qiStart: 3,
-    intro: "暮色正落在大理城墙上，城门未闭，风却已经有些凉。你从茶肆旁经过时，闻到一缕不该出现在城南的淡檀香。",
-    setupHint: "擅长周旋、辨认线索，起手内力较稳。",
+    id: "nameless-wanderer",
+    name: "无名客",
+    desc: "无门无派，先在大理客栈落脚，再被无量山风波一步步卷进江湖大局。",
+    qiStart: 2,
+    intro: "大理城里人声未歇，无量山那边的风波却已经吹到了客栈门口。你只是个暂时落脚的无名客，本想歇一夜再走，可掌柜、双儿和往来旅人都像在等一场将至的麻烦。",
+    setupHint: "起手身份中性，先从客栈、人情和无量山线索入局。",
     firstQuest: {
-      title: "茶肆里的旧香",
-      text: "查清城南茶肆里那缕不合时宜的檀香，以及它为何会和江湖人留下的暗记连在一起。",
+      title: "客栈歇脚",
+      text: "先在大理客栈站稳脚跟，看看掌柜、双儿和无量山的风声到底牵着哪条线。",
       location: "大理城",
-      npc: "阿朱"
+      npc: "双儿"
     },
-    equipmentNames: ["青锋短剑", "细纹软衣", "玉佩"],
-    openingItem: item("dali-note", "城南账页", "一张写着模糊时辰与茶钱的旧账页。", 1, { type: "quest" }),
-    martialArts: [...defaultMartialArts.dali]
-  },
-  {
-    id: "jianghu-orphan",
-    name: "江湖孤客",
-    desc: "无门无派，靠眼力和脚力吃饭，起手内力最少。",
-    qiStart: 1,
-    intro: "你在大理城外的夜路上止步，火光刚落，便看见有人把一只碎瓷盏踢进草里，像是不愿让别人多看一眼。",
-    setupHint: "擅长贴地求生、摸路试探，早期更依赖外功。",
-    firstQuest: {
-      title: "碎瓷盏的暗号",
-      text: "弄清那只碎瓷盏上的刻痕与夜路来人之间的关系，找出是谁先一步灭了踪迹。",
-      location: "无量山",
-      npc: "木婉清"
-    },
-    equipmentNames: ["旧铁短刀", "灰布劲装", "铜钱串"],
-    openingItem: item("road-shard", "碎瓷盏", "边缘刻着似图非图的细痕。", 1, { type: "quest" }),
     martialArts: [...defaultMartialArts.jianghu]
-  },
-  {
-    id: "shaolin-lay",
-    name: "少林俗家",
-    desc: "根骨扎实，心性稳，起手内力最高，但打法朴正。",
-    qiStart: 5,
-    intro: "山路上的暮鼓声还没散尽，你便看见一名香客把供果落在台阶边，自己却一步也不敢回头，像是身后有人盯着。",
-    setupHint: "擅长正面硬接与稳住局势，起手内力最充足。",
-    firstQuest: {
-      title: "台阶边的供果",
-      text: "顺着香客丢下的供果与脚印，查清是谁在少室山脚下暗中逼视来往行人。",
-      location: "少室山",
-      npc: "虚竹"
-    },
-    equipmentNames: ["齐眉棍", "粗布护臂", "木念珠"],
-    openingItem: item("offering-tag", "供果签纸", "签纸上沾着一丝不寻常的药味。", 1, { type: "quest" }),
-    martialArts: [...defaultMartialArts.shaolin]
   }
 ];
 
 export const routeGuides: Record<string, { sceneType: SceneType; objective: ObjectiveHint; intro: string }> = {
-  "dali-heir": {
-    sceneType: "market",
-    objective: { title: "未接任务", text: "先观察城南茶肆四周的异常动静。", location: "大理城" },
-    intro: originTemplates[0].intro
-  },
-  "jianghu-orphan": {
+  "nameless-wanderer": {
     sceneType: "inn",
-    objective: { title: "未接任务", text: "先弄清夜路上那只碎瓷盏是谁留下的。", location: "无量山" },
-    intro: originTemplates[1].intro
-  },
-  "shaolin-lay": {
-    sceneType: "temple",
-    objective: { title: "未接任务", text: "先安静观察少室山脚下的人与脚印。", location: "少室山" },
-    intro: originTemplates[2].intro
+    objective: { title: "入局引导", text: "先在客栈落脚，看看掌柜、双儿和无量山的风声。", location: "大理城" },
+    intro: originTemplates[0].intro
   }
 };
 
@@ -257,10 +280,9 @@ export const roster: Character[] = [
   makeCharacter(
     "placeholder-dali",
     "无名少侠",
-    "大理世族门下",
+    "无名客，初入江湖",
     [10, 10, 10, 10, 10, 10],
-    3,
-    originTemplates[0].equipmentNames,
+    2,
     originTemplates[0].martialArts,
     { originId: originTemplates[0].id, isCustom: true }
   )
@@ -289,7 +311,7 @@ export const npcs: Npc[] = [
 
 export const initialGameState: GameState = {
   setupComplete: false,
-  originId: "dali-heir",
+  originId: "nameless-wanderer",
   creationMode: "origin",
   chapter: "第一卷：无量山风波",
   chapterState: {

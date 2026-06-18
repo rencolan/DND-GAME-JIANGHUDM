@@ -953,6 +953,10 @@ button {
   font-size: 12px;
 }
 
+.stat-grid em {
+  font-style: normal;
+}
+
 .stat-grid b {
   display: block;
   margin: 4px 0;
@@ -1061,33 +1065,10 @@ button {
   font-size: 12px;
 }
 
-.equipment-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-}
-
-.equipment-grid article, .list article, .npc-card {
+.list article, .npc-card {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: rgba(31, 24, 18, .78);
-}
-
-.equipment-grid article {
-  display: grid;
-  min-height: 96px;
-  place-items: center;
-  padding: 10px 6px;
-  text-align: center;
-}
-
-.equipment-grid b {
-  font-size: 13px;
-}
-
-.equipment-grid span {
-  color: var(--muted);
-  font-size: 11px;
 }
 
 .list {

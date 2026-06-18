@@ -337,6 +337,21 @@ function resolveCombatWin(state: GameState, enemyName?: string): GamePatch | und
     questUpdates: [resolved, nextQuest].filter(Boolean) as Partial<Quest>[],
     questStateUpdates: [resolvedState, nextState].filter(Boolean) as QuestStateNode[],
     objectiveUpdate: buildObjective(QUEST_WANDERER_4),
+    rumorAdd: [
+      {
+        text: "段誉提过无量山深处还有石室旧迹，里面留下的步图和运气路数都不像寻常门派传承。",
+        kind: "hook",
+        location: "无量山",
+        npc: "段誉",
+        source: "local-mainline"
+      },
+      {
+        text: "无量剑派那边已经有人放出话来，左子穆不会轻易放过今晚进过山谷的人。",
+        kind: "rumor",
+        location: "无量山",
+        source: "local-mainline"
+      }
+    ],
     npcUpdates: [
       { name: "段誉", discovered: true, hidden: false, status: "被你从山道乱局里护了下来，终于有了喘息的空档" },
       { name: "木婉清", discovered: true, hidden: false, status: "仍旧冷着脸，却明显记住了你这次出手" }
@@ -396,6 +411,13 @@ function resolveUseClue(state: GameState, clueId: string): GamePatch | undefined
           text: "残页上的水路暗记不像临时涂写，更像是有人故意留给熟门熟路的人看的交接标记。它背后牵出来的，不会只是无量山这一场追杀。",
           kind: "hook",
           location: "大理城",
+          npc: "阿朱",
+          source: "local-mainline"
+        },
+        {
+          text: "阿朱认得几处暗记最终都朝姑苏水路去，若想继续追下去，迟早得走这一趟。",
+          kind: "location_lead",
+          location: "姑苏",
           npc: "阿朱",
           source: "local-mainline"
         }
@@ -550,11 +572,45 @@ function resolveStoryChoice(state: GameState, choiceId: StoryChoiceId): GamePatc
     return {
       questUpdates: [{ id: QUEST_WANDERER_5, status: "resolved" }],
       objectiveUpdate: {
-        title: "第一章暂止",
-        text: "双儿已经跟上了你。大理这条线暂时收住，下一程从你带着谁上路开始。",
-        location: state.locations.find((location) => location.current)?.name || "大理城",
-        npc: "双儿"
+        title: "前往姑苏",
+        text: "双儿已经跟上了你。残页上的水路暗记最终指向姑苏，下一程该去找阿朱、王语嫣和燕子坞那边把路数辨清。",
+        location: "姑苏",
+        npc: "王语嫣"
       },
+      rumorAdd: [
+        {
+          text: "残页最后几处接头记号都压在姑苏水路一带，阿朱让你尽快过去，别让线头断在半路。",
+          kind: "location_lead",
+          location: "姑苏",
+          npc: "阿朱",
+          source: "local-mainline"
+        },
+        {
+          text: "慕容复和王语嫣或许认得账页背后的武学路数，姑苏这一趟不只是查人，也是在查招。",
+          kind: "hook",
+          location: "姑苏",
+          npc: "王语嫣",
+          source: "local-mainline"
+        },
+        {
+          text: "岳老三和云中鹤正在沿路找段誉，回头再走明路，十有八九会撞上他们。",
+          kind: "rumor",
+          location: "大理城",
+          source: "local-mainline"
+        },
+        {
+          text: "吐蕃高僧鸠摩智近日也在姑苏附近问经寻谱，这趟过去未必只会碰上地方人物。",
+          kind: "hook",
+          location: "姑苏",
+          source: "local-mainline"
+        },
+        {
+          text: "北边还传出一个身带寒毒的怪人四处求活路，背后多半牵着星宿海和丁春秋的手笔。",
+          kind: "hook",
+          location: "少室山",
+          source: "local-mainline"
+        }
+      ],
       npcUpdates: [
         { name: "双儿", companion: true, recruitable: true, status: "奉掌柜之命，安静地跟在你身边" }
       ],
@@ -577,13 +633,17 @@ function resolveStoryChoice(state: GameState, choiceId: StoryChoiceId): GamePatc
       ],
       storyFlagsAdd: [
         "route:shuang-er:follow",
-        "chapter:one:complete"
+        "chapter:one:complete",
+        stageFlag("to_gusu")
+      ],
+      locationUnlockUpdates: [
+        { locationId: "gusu", reason: "quest" }
       ],
       questStateUpdates: [
         { id: QUEST_WANDERER_5, status: "resolved", stage: "accepted-shuang-er" }
       ],
-      chapterStateUpdate: setChapterStage("chapter_resolved"),
-      systemNote: "你收下了双儿。第一章在大理的尾声已经落定，往后的江湖会带着她一起展开。"
+      chapterStateUpdate: setChapterStage("to_gusu"),
+      systemNote: "你收下了双儿，大理这条线也正式把你推向了姑苏。接下来不只是查残页，还得提防岳老三、云中鹤和更高一层的人物。"
     };
   }
 
@@ -591,11 +651,45 @@ function resolveStoryChoice(state: GameState, choiceId: StoryChoiceId): GamePatc
     return {
       questUpdates: [{ id: QUEST_WANDERER_5, status: "resolved" }],
       objectiveUpdate: {
-        title: "第一章暂止",
-        text: "你暂时仍是独行。大理客栈给你留下了一个稳稳的回头处，往后仍可再续这条线。",
-        location: "大理城",
-        npc: "双儿"
+        title: "前往姑苏",
+        text: "你暂时仍是独行，但残页上的水路暗记已经把下一程指向了姑苏。先把这条线追实，再回头看大理这边的人。",
+        location: "姑苏",
+        npc: "王语嫣"
       },
+      rumorAdd: [
+        {
+          text: "残页最后几处接头记号都压在姑苏水路一带，阿朱让你尽快过去，别让线头断在半路。",
+          kind: "location_lead",
+          location: "姑苏",
+          npc: "阿朱",
+          source: "local-mainline"
+        },
+        {
+          text: "慕容复和王语嫣或许认得账页背后的武学路数，姑苏这一趟不只是查人，也是在查招。",
+          kind: "hook",
+          location: "姑苏",
+          npc: "王语嫣",
+          source: "local-mainline"
+        },
+        {
+          text: "岳老三和云中鹤正在沿路找段誉，回头再走明路，十有八九会撞上他们。",
+          kind: "rumor",
+          location: "大理城",
+          source: "local-mainline"
+        },
+        {
+          text: "吐蕃高僧鸠摩智近日也在姑苏附近问经寻谱，这趟过去未必只会碰上地方人物。",
+          kind: "hook",
+          location: "姑苏",
+          source: "local-mainline"
+        },
+        {
+          text: "北边还传出一个身带寒毒的怪人四处求活路，背后多半牵着星宿海和丁春秋的手笔。",
+          kind: "hook",
+          location: "少室山",
+          source: "local-mainline"
+        }
+      ],
       npcUpdates: [
         { name: "双儿", companion: false, recruitable: true, hidden: false, discovered: true, status: "仍在客栈等你回头叫她" }
       ],
@@ -615,13 +709,17 @@ function resolveStoryChoice(state: GameState, choiceId: StoryChoiceId): GamePatc
       ],
       storyFlagsAdd: [
         "route:shuang-er:declined",
-        "chapter:one:complete"
+        "chapter:one:complete",
+        stageFlag("to_gusu")
+      ],
+      locationUnlockUpdates: [
+        { locationId: "gusu", reason: "quest" }
       ],
       questStateUpdates: [
         { id: QUEST_WANDERER_5, status: "resolved", stage: "declined-for-now" }
       ],
-      chapterStateUpdate: setChapterStage("chapter_resolved"),
-      systemNote: "你暂时没有带走双儿，但这条线没有断。大理仍会是你回头时能接住人的地方。"
+      chapterStateUpdate: setChapterStage("to_gusu"),
+      systemNote: "你暂时没有带走双儿，但主线已经被残页和水路暗记推向姑苏。下一程该去见更大的局了。"
     };
   }
 

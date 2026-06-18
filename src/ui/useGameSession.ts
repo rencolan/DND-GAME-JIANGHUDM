@@ -419,8 +419,8 @@ export function useGameSession() {
     }
   }
 
-  function queuePendingDamage(hitText: string, art: MartialArt, qiBonusSpend: number) {
-    const pendingDamagePatch = prepareCombatDamageRoll(art, hitText, qiBonusSpend);
+  function queuePendingDamage(hitText: string, art: MartialArt, qiBonusSpend: number, isCritical = false) {
+    const pendingDamagePatch = prepareCombatDamageRoll(art, hitText, qiBonusSpend, isCritical);
 
     setGame((prev) => {
       const patched = applyPatchToState(prev, pendingDamagePatch);
@@ -437,8 +437,71 @@ export function useGameSession() {
   }
 
   async function submitDamageResult(text: string, pendingDamage: PendingDamage) {
+    if (busy) return;
+
+    tryPlayMusic();
+    setBusy(true);
+    closePanels();
+
     const combinedText = `${pendingDamage.hitText}\n${text}`;
-    await submitDiceResult(combinedText, pendingDamage.qiCost);
+    const diceMessage: Message = { id: uid("dice"), role: "dice", text: combinedText };
+    const nextTime = advanceTime(game);
+    const baseGame: GameState = {
+      ...game,
+      pendingCheck: undefined,
+      combat: game.combat.active
+        ? { ...game.combat, phase: "resolving_enemy_response" }
+        : game.combat,
+      character: {
+        ...game.character,
+        qi: clamp(game.character.qi - pendingDamage.qiCost, 0, game.character.maxQi)
+      },
+      actionCount: game.actionCount + 1,
+      ...nextTime,
+      messages: [...game.messages, diceMessage]
+    };
+    const globalUpdateDue = baseGame.actionCount % WORLD_STEP === 0;
+
+    setGame(baseGame);
+    const localCombatResolution = localDm(combinedText, baseGame, globalUpdateDue);
+
+    try {
+      const aiPrompt = baseGame.combat.active
+        ? "Combat resolution is local. Only provide narration, pressure, and enemy intent."
+        : globalUpdateDue
+          ? "Advance the broader world a little in the narration."
+          : undefined;
+      const aiResult = await callAi(baseGame, combinedText, aiPrompt);
+      setGame((prev) => {
+        const combatPatched = applyPatchToState(prev, withSceneFallback(localCombatResolution.patch, localCombatResolution.text, combinedText));
+        const aiProposalPatch = baseGame.combat.active ? {} : aiProposalsToLocalPatch(combatPatched, aiResult.proposals);
+        const patched = applyPatchToState(
+          combatPatched,
+          baseGame.combat.active
+            ? filterAiCombatPatch(aiResult.patch)
+            : withSceneFallback({ ...aiResult.patch, ...aiProposalPatch }, aiResult.text, combinedText)
+        );
+        return {
+          ...patched,
+          messages: [...patched.messages, { id: uid("dm"), role: "dm", text: aiResult.text }]
+        };
+      });
+    } catch (error) {
+      setGame((prev) => {
+        const patched = applyPatchToState(prev, withSceneFallback(localCombatResolution.patch, localCombatResolution.text, combinedText));
+        return {
+          ...patched,
+          messages: [
+            ...patched.messages,
+            { id: uid("system"), role: "system", text: `API 璋冪敤澶辫触锛屽凡鍒囧洖鏈湴涓绘寔锛?{error instanceof Error ? error.message : ""}` },
+            { id: uid("dm"), role: "dm", text: localCombatResolution.text }
+          ]
+        };
+      });
+    } finally {
+      closePanels();
+      setBusy(false);
+    }
   }
 
   async function submitDiceResult(text: string, qiSpent = 0) {

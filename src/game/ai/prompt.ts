@@ -84,12 +84,13 @@ ${JSON.stringify(state.character.abilities.map((ability) => ({
 [Hero Martial Arts]
 ${JSON.stringify(state.character.martialArts.map((art) => ({
     name: art.name,
+    grade: art.grade,
+    source: art.source,
     category: art.category,
     linkedAbility: art.linkedAbility,
     damageDice: art.damageDice,
     damageBonus: art.damageBonus || 0,
-    qiCost: art.baseQiCost,
-    effect: art.effect
+    qiCost: art.baseQiCost
   })), null, 2)}
 
 [Visible NPC Summary]

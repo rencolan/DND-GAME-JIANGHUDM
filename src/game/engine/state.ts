@@ -1,4 +1,4 @@
-import { defaultMartialArts, enemyPresets, initialGameState } from "../../data";
+import { enemyPresets, initialGameState, martialArtCatalog } from "../../data";
 import { normalizeChapterStateForNameless } from "../story/namelessWanderer";
 import type {
   ChapterState,
@@ -30,14 +30,7 @@ const abilityLabels: Record<string, string> = {
 };
 
 const martialLookup = new Map<string, MartialArt>();
-[
-  ...defaultMartialArts.dali,
-  ...defaultMartialArts.jianghu,
-  ...defaultMartialArts.shaolin,
-  ...defaultMartialArts.enemy,
-  ...defaultMartialArts.bosses,
-  ...defaultMartialArts.legends
-].forEach((art) => {
+martialArtCatalog.forEach((art) => {
   martialLookup.set(art.id, art);
   martialLookup.set(art.name, art);
 });
@@ -161,23 +154,53 @@ function normalizeMartialArt(raw: Partial<MartialArt> & { name: string }): Marti
     grade: raw.grade || template?.grade || "入门",
     category,
     linkedAbility: raw.linkedAbility || template?.linkedAbility || "str",
-    effect: raw.effect || template?.effect || "一式既出，重在火候与拿捏。",
     damageDice: raw.damageDice || template?.damageDice || "1d4",
     damageBonus: raw.damageBonus ?? template?.damageBonus,
     baseQiCost: category === "internal" ? raw.baseQiCost ?? template?.baseQiCost ?? 1 : 0,
-    risk: raw.risk || template?.risk || "贸然出手，容易被看出路数。",
     source: raw.source || template?.source || "江湖所得"
   };
 }
 
+function normalizeInventory(raw: Item[] | undefined) {
+  return (raw || [])
+    .filter((item) => {
+      const legacyType = (item as { type?: string })?.type;
+      return item && legacyType !== "weapon" && legacyType !== "armor" && legacyType !== "accessory";
+    })
+    .map((item) => {
+      const legacyType = (item as { type?: string }).type;
+      const inferredType: Item["type"] = legacyType === "quest"
+        ? "quest"
+        : legacyType === "consumable" || item.usable || typeof item.hpRestore === "number" || typeof item.qiRestore === "number"
+          ? "consumable"
+          : "quest";
+      return {
+        id: item.id,
+        name: item.name,
+        desc: item.desc,
+        count: item.count,
+        type: inferredType,
+        hpRestore: item.hpRestore,
+        qiRestore: item.qiRestore,
+        usable: item.usable
+      };
+    });
+}
+
 function relabelAbilities(character: Character): Character {
+  const {
+    inventory,
+    equipment: _legacyEquipment,
+    ...rest
+  } = character as Character & { inventory?: Item[]; equipment?: unknown };
   return {
-    ...character,
+    ...rest,
     abilities: (character.abilities || []).map((ability) => ({
       ...ability,
       label: abilityLabels[ability.key] || ability.label
     })),
-    martialArts: (character.martialArts || []).map((art) => normalizeMartialArt({ ...art, name: art.name }))
+    martialArts: (character.martialArts || []).map((art) => normalizeMartialArt({ ...art, name: art.name })),
+    inventory: normalizeInventory(inventory)
   };
 }
 
@@ -224,7 +247,8 @@ function makePendingDamage(raw: Partial<PendingDamage> | undefined): PendingDama
     damageBonus: raw.damageBonus || 0,
     qiCost: raw.qiCost || 0,
     qiBonusSpend: raw.qiBonusSpend || 0,
-    hitText: raw.hitText
+    hitText: raw.hitText,
+    isCritical: raw.isCritical || false
   };
 }
 
@@ -477,8 +501,10 @@ export function applyPatchToState(prev: GameState, patch: GamePatch): GameState 
       name: patch.newItem.name,
       desc: patch.newItem.desc || "新得之物，尚待派上用场。",
       count: patch.newItem.count || 1,
-      type: patch.newItem.type,
-      equipable: patch.newItem.equipable,
+      type: patch.newItem.type
+        || (patch.newItem.usable || typeof patch.newItem.hpRestore === "number" || typeof patch.newItem.qiRestore === "number"
+          ? "consumable"
+          : "quest"),
       usable: patch.newItem.usable,
       hpRestore: patch.newItem.hpRestore,
       qiRestore: patch.newItem.qiRestore

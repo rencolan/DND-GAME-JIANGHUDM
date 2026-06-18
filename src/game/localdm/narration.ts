@@ -1,6 +1,12 @@
 import type { WorldResolution } from "../world";
 
+function withEnemyFollowup(base: string, result: WorldResolution) {
+  return result.meta?.enemyTurnSummary ? `${base}\n${result.meta.enemyTurnSummary}` : base;
+}
+
 export function buildLocalDmNarration(result: WorldResolution) {
+  if (result.textOverride) return result.textOverride;
+
   const enemyName = result.meta?.enemyName || "对手";
   const targetName = result.meta?.targetName || "前路";
   const locationName = result.meta?.locationName || "当前地点";
@@ -9,7 +15,7 @@ export function buildLocalDmNarration(result: WorldResolution) {
     case "story_check_inn_success":
       return "你一出手，客栈前堂的乱局总算被压住，局面开始朝你能掌控的方向收束。";
     case "story_check_inn_fail":
-      return "你虽然接住了场面，但还没能彻底压住乱局，客栈里的人心仍在晃。";
+      return "你虽接住了场面，但还没能彻底压住乱局，客栈里的人心仍在晃。";
     case "story_check_mountain_success":
       return "你顺着山道硬生生追上了那条线，眼前的风波终于从传闻变成了实局。";
     case "story_check_mountain_fail":
@@ -17,11 +23,11 @@ export function buildLocalDmNarration(result: WorldResolution) {
     case "story_check_innkeeper_success":
       return "你及时把掌柜从乱局里拽了出来，这一手让客栈这边重新稳住了气口。";
     case "story_check_innkeeper_fail":
-      return "你出手还是慢了，掌柜虽然没倒下，但这一场已经见了血。";
+      return "你出手还是慢了，掌柜虽没倒下，但这一场已经见了血。";
     case "story_check_generic_success":
-      return "这一掷让局面往前推开了一层，事情开始对你有了回应。";
+      return "这一手让局面往前推开了一层，事情开始对你有了回应。";
     case "story_check_generic_fail":
-      return "这一掷没能把事情做实，局面还卡在那里。";
+      return "这一手没能把事情做实，局面还卡在那里。";
     case "mainline_inn_check_requested":
       return "你踏进客栈这摊乱局，眼下已经不是旁观的时候了，必须先把场面压住。";
     case "mainline_mountain_check_requested":
@@ -44,20 +50,24 @@ export function buildLocalDmNarration(result: WorldResolution) {
       return `${targetName} 这条线还没真正打开，贸然赶过去只会扑空。`;
     case "travel_depart":
       return `你定下方向，动身前往 ${targetName}。沿途风声未止，但局面已经换了新的场子。`;
+    case "combat_initiative_win":
+      return `你先一步看穿了 ${enemyName} 的起手，脚下先抢到半拍，眼前这一轮由你先动。`;
+    case "combat_initiative_lose":
+      return withEnemyFollowup(`你和 ${enemyName} 一起起势，却还是慢了半拍。对方抢下先手，攻势立刻压了上来。`, result);
     case "combat_damage_end":
-      return `这一式伤害终于把 ${enemyName} 压垮了，眼前这场厮杀到这里算是收住。`;
+      return `这一招伤害终于把 ${enemyName} 压垮了，眼前这场厮杀到这里算是收住。`;
     case "combat_damage_continue":
-      return `这一式伤害结结实实打在 ${enemyName} 身上，但对方还没倒，下一轮马上接上。`;
+      return withEnemyFollowup(`这一招实打实落在 ${enemyName} 身上，但对方还没倒，下一轮很快又会接上。`, result);
     case "combat_hit_end":
-      return `你这一轮抢到了决定性的手，${enemyName} 再也接不住后势，这场战斗到此为止。`;
+      return `你这一下抢到了决定性的手，${enemyName} 再也接不住后劲，这场战斗到此为止。`;
     case "combat_hit_success":
-      return `你这一下打中了要害，${enemyName} 被逼得气势一乱，但还没彻底垮掉。`;
+      return `你这一手命中了 ${enemyName}，招式已经打穿对方的防线，接下来只差把伤害落实。`;
     case "combat_hit_fail":
-      return `你没能抢下这一轮的节奏，${enemyName} 立刻把压力反压了回来。`;
+      return withEnemyFollowup(`你这一击没能打穿 ${enemyName} 的防线，节奏立刻被对方抢了回去。`, result);
     case "combat_named_start":
       return `你一动手，对面的 ${enemyName} 也不再藏着，战局立刻转成正面交锋。`;
     case "combat_generic_start":
-      return "你这一出手，试探立刻变成了真正交锋。";
+      return "你这一出手，试探立刻变成了真正的交锋。";
     case "suggested_check":
       return "你这一步已经碰到关键处了，但还得掷出一个明确结果，局面才会真正落定。";
     case "first_action":

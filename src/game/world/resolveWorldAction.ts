@@ -1,4 +1,12 @@
-import { startCombat, resolveCombatDamage, resolveCombatHit } from "../combat";
+import { originTemplates } from "../../data";
+import {
+  prepareCombatDamageRoll,
+  resolveCombatDamage,
+  resolveCombatHit,
+  resolveCombatInitiative,
+  resolveEnemyTurn,
+  startCombat
+} from "../combat";
 import { advanceWorldLocally, mergeGamePatches } from "../engine";
 import {
   QUEST_WANDERER_1,
@@ -8,7 +16,8 @@ import {
   QUEST_WANDERER_5,
   resolveNamelessStoryTrigger
 } from "../story/namelessWanderer";
-import type { GamePatch, GameState } from "../../types";
+import { resolveMartialArtStoryAction } from "../story/martialArtRoutes";
+import type { GamePatch, GameState, MartialArt } from "../../types";
 import {
   buildShuangErSupportPatch,
   buildSuggestedCheck,
@@ -19,8 +28,8 @@ import {
   hasQuestStatus,
   hasStoryFlag,
   includesAny,
-  parseDamageResult,
-  parseHitResult,
+  parseCombatDamageResult,
+  parseCombatHitResult,
   routeStage
 } from "./helpers";
 
@@ -44,6 +53,8 @@ export type WorldTextId =
   | "travel_unknown"
   | "travel_locked"
   | "travel_depart"
+  | "combat_initiative_win"
+  | "combat_initiative_lose"
   | "combat_damage_end"
   | "combat_damage_continue"
   | "combat_hit_end"
@@ -59,15 +70,17 @@ export type WorldTextMeta = {
   enemyName?: string;
   targetName?: string;
   locationName?: string;
+  enemyTurnSummary?: string;
 };
 
 export type WorldResolution = {
   textId: WorldTextId;
   patch: GamePatch;
   meta?: WorldTextMeta;
+  textOverride?: string;
 };
 
-const TRAVEL_COMMAND = /^前往[「\[（(]?(.+?)[」\]）)]?$/;
+const TRAVEL_COMMAND = /^前往[“"]?(.+?)[”"]?$/;
 
 function withWorldPatch(state: GameState, globalUpdate: boolean, ...patches: Array<GamePatch | undefined>): GamePatch {
   return mergeGamePatches(advanceWorldLocally(state, globalUpdate), ...patches);
@@ -80,6 +93,53 @@ function resolveStoryPatch(
   ...patches: Array<GamePatch | undefined>
 ) {
   return withWorldPatch(state, globalUpdate, resolveNamelessStoryTrigger(state, trigger), ...patches);
+}
+
+function usesNamelessStory(state: GameState) {
+  return state.chapterState.id === "nameless-wanderer-ch1";
+}
+
+function buildOriginOpeningPatch(state: GameState): GamePatch | undefined {
+  if (usesNamelessStory(state)) return undefined;
+  if (state.quests.some((quest) => quest.status === "active")) return undefined;
+
+  const origin = originTemplates.find((entry) => entry.id === state.originId);
+  if (!origin) return undefined;
+
+  const questId = `origin-opening:${origin.id}`;
+  if (state.storyFlags.includes(`quest:${origin.id}:issued`) || state.questStateMap[questId]?.status === "active") {
+    return undefined;
+  }
+
+  return {
+    questUpdates: [
+      {
+        id: questId,
+        title: origin.firstQuest.title,
+        text: origin.firstQuest.text,
+        status: "active"
+      }
+    ],
+    questStateUpdates: [
+      {
+        id: questId,
+        status: "active",
+        stage: "opening"
+      }
+    ],
+    objectiveUpdate: {
+      title: origin.firstQuest.title,
+      text: origin.firstQuest.text,
+      location: origin.firstQuest.location,
+      npc: origin.firstQuest.npc
+    },
+    chapterStateUpdate: {
+      id: state.chapterState.id || `origin:${origin.id}`,
+      stage: "opening"
+    },
+    storyFlagsAdd: [`quest:${origin.id}:issued`],
+    systemNote: `首个正式任务已派发：${origin.firstQuest.title}`
+  };
 }
 
 function resolvePendingStoryCheck(state: GameState, globalUpdate: boolean, success: boolean): WorldResolution {
@@ -133,6 +193,15 @@ function resolvePendingStoryCheck(state: GameState, globalUpdate: boolean, succe
   };
 }
 
+function isAmbushAction(action: string) {
+  return includesAny(action, ["偷袭", "伏击", "暗算", "突袭"]);
+}
+
+function findMartialArtFromHitLabel(state: GameState, label?: string): MartialArt | undefined {
+  if (!label) return undefined;
+  return state.character.martialArts.find((art) => label.includes(art.name));
+}
+
 function maybeStartMainlineChecks(state: GameState, action: string, globalUpdate: boolean, firstActionPatch?: GamePatch): WorldResolution | undefined {
   const atDali = currentLocationId(state) === "dali";
   const atWuliang = currentLocationId(state) === "wuliang";
@@ -177,17 +246,7 @@ function maybeStartMainlineChecks(state: GameState, action: string, globalUpdate
       patch: withWorldPatch(
         state,
         globalUpdate,
-        startCombat(state, "black-assassin", {
-          label: "接下黑衣刺客的起手",
-          abilityKey: "dex",
-          martialArtId: "enemy-dagger",
-          dc: 14,
-          reason: "追兵已经压到面前，必须先把起手挡住。",
-          risk: "如果失败，你会先吃下一记狠手并失去位置。",
-          enemyIntent: "刺客想先打穿你，再把后面的人拖走。",
-          suggestedAction: "可以抢身位拆招，也可以直接迎上去。",
-          systemNote: "无量山山道上的追杀已经正面撞上来了。"
-        }),
+        startCombat(state, "black-assassin"),
         firstActionPatch
       )
     };
@@ -232,7 +291,7 @@ function maybeStartMainlineChecks(state: GameState, action: string, globalUpdate
   if (
     q5Active &&
     hasStoryFlag(state, "route:shuang-er:offered") &&
-    includesAny(action, ["先留下", "留在客栈", "暂时不带", "不必同行", "以后再说"])
+    includesAny(action, ["先留着", "留在客栈", "暂时不带", "不必同行", "以后再说"])
   ) {
     return {
       textId: "mainline_shuanger_stay",
@@ -305,43 +364,95 @@ function maybeEnterGenericCombat(state: GameState, action: string, globalUpdate:
   const enemyName = namedEnemy?.name || "black-assassin";
   return {
     textId: namedEnemy ? "combat_named_start" : "combat_generic_start",
-    patch: withWorldPatch(state, globalUpdate, startCombat(state, enemyName), firstActionPatch),
+    patch: withWorldPatch(
+      state,
+      globalUpdate,
+      startCombat(state, enemyName, { skipInitiative: isAmbushAction(action) }),
+      firstActionPatch
+    ),
     meta: { enemyName: namedEnemy?.name }
   };
 }
 
 export function resolveWorldAction(action: string, state: GameState, globalUpdate: boolean): WorldResolution {
-  const hit = parseHitResult(action);
-  const damage = parseDamageResult(action);
-  const firstActionPatch = resolveNamelessStoryTrigger(state, { kind: "first_action" });
+  const hit = parseCombatHitResult(action);
+  const damage = parseCombatDamageResult(action);
+  const namelessStory = usesNamelessStory(state);
+  const firstActionPatch = namelessStory
+    ? resolveNamelessStoryTrigger(state, { kind: "first_action" })
+    : buildOriginOpeningPatch(state);
 
   if (state.combat.active && state.pendingDamage && !Number.isNaN(damage.total)) {
-    const combatPatch = resolveCombatDamage(state, damage);
-    const storyPatch = combatPatch.combatAction === "exit"
-      ? resolveNamelessStoryTrigger(state, { kind: "combat_win", enemyName: state.combat.enemy })
-      : undefined;
+    const playerPatch = resolveCombatDamage(state, damage);
+    if (playerPatch.combatAction === "exit") {
+      const storyPatch = namelessStory
+        ? resolveNamelessStoryTrigger(state, { kind: "combat_win", enemyName: state.combat.enemy })
+        : undefined;
+      return {
+        textId: "combat_damage_end",
+        patch: withWorldPatch(state, globalUpdate, playerPatch, storyPatch),
+        meta: { enemyName: state.combat.enemy }
+      };
+    }
 
+    const enemyTurn = resolveEnemyTurn(state);
     return {
-      textId: combatPatch.combatAction === "exit" ? "combat_damage_end" : "combat_damage_continue",
-      patch: withWorldPatch(state, globalUpdate, combatPatch, storyPatch),
-      meta: { enemyName: state.combat.enemy }
+      textId: "combat_damage_continue",
+      patch: withWorldPatch(state, globalUpdate, playerPatch, enemyTurn.patch),
+      meta: {
+        enemyName: state.combat.enemy,
+        enemyTurnSummary: enemyTurn.summary
+      }
     };
   }
 
-  if (state.combat.active && !Number.isNaN(hit.total) && !Number.isNaN(hit.dc)) {
-    const combatPatch = resolveCombatHit(state, hit);
-    const storyPatch = combatPatch.combatAction === "exit"
-      ? resolveNamelessStoryTrigger(state, { kind: "combat_win", enemyName: state.combat.enemy })
-      : undefined;
+  if (state.combat.active && !Number.isNaN(hit.total) && !Number.isNaN(hit.dc) && state.combat.phase === "opening") {
+    const initiativePatch = resolveCombatInitiative(state, hit);
+    if (hit.success) {
+      return {
+        textId: "combat_initiative_win",
+        patch: withWorldPatch(state, globalUpdate, initiativePatch),
+        meta: { enemyName: state.combat.enemy }
+      };
+    }
 
+    const enemyTurn = resolveEnemyTurn(state, false);
     return {
-      textId: combatPatch.combatAction === "exit"
-        ? "combat_hit_end"
-        : hit.success
-          ? "combat_hit_success"
-          : "combat_hit_fail",
-      patch: withWorldPatch(state, globalUpdate, combatPatch, storyPatch),
-      meta: { enemyName: state.combat.enemy }
+      textId: "combat_initiative_lose",
+      patch: withWorldPatch(state, globalUpdate, initiativePatch, enemyTurn.patch),
+      meta: {
+        enemyName: state.combat.enemy,
+        enemyTurnSummary: enemyTurn.summary
+      }
+    };
+  }
+
+  if (state.combat.active && !Number.isNaN(hit.total) && !Number.isNaN(hit.dc) && state.combat.phase === "awaiting_hit_check") {
+    const matchedArt = findMartialArtFromHitLabel(state, hit.label);
+    if (hit.success && matchedArt) {
+      return {
+        textId: "combat_hit_success",
+        patch: withWorldPatch(
+          state,
+          globalUpdate,
+          prepareCombatDamageRoll(matchedArt, action, 0, Boolean(hit.isCritical)),
+          {
+            systemNote: hit.isCritical ? `${matchedArt.name} scores a critical hit.` : `${matchedArt.name} hits cleanly.`
+          }
+        ),
+        meta: { enemyName: state.combat.enemy }
+      };
+    }
+
+    const attackPatch = resolveCombatHit(state, hit);
+    const enemyTurn = resolveEnemyTurn(state);
+    return {
+      textId: hit.success ? "combat_hit_success" : "combat_hit_fail",
+      patch: withWorldPatch(state, globalUpdate, attackPatch, enemyTurn.patch),
+      meta: {
+        enemyName: state.combat.enemy,
+        enemyTurnSummary: enemyTurn.summary
+      }
     };
   }
 
@@ -349,8 +460,20 @@ export function resolveWorldAction(action: string, state: GameState, globalUpdat
     return resolvePendingStoryCheck(state, globalUpdate, hit.success);
   }
 
-  const mainline = maybeStartMainlineChecks(state, action, globalUpdate, firstActionPatch);
+  const mainline = namelessStory
+    ? maybeStartMainlineChecks(state, action, globalUpdate, firstActionPatch)
+    : undefined;
   if (mainline) return mainline;
+
+  const martialArtStory = resolveMartialArtStoryAction(state, action);
+  if (martialArtStory) {
+    return {
+      textId: "default_scene",
+      patch: withWorldPatch(state, globalUpdate, firstActionPatch, martialArtStory.patch),
+      meta: { locationName: currentLocationName(state) },
+      textOverride: martialArtStory.text
+    };
+  }
 
   const travel = maybeTravel(state, action, globalUpdate, firstActionPatch);
   if (travel) return travel;

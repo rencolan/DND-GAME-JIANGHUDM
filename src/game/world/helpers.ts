@@ -1,5 +1,5 @@
 import { enemyPresets } from "../../data";
-import type { GamePatch, GameState, PendingCheck, Quest } from "../../types";
+import type { GamePatch, GameState, Quest } from "../../types";
 
 export type ParsedHitResult = {
   label?: string;
@@ -7,6 +7,8 @@ export type ParsedHitResult = {
   dc: number;
   success: boolean;
   damageTotal: number;
+  naturalRoll?: number;
+  isCritical?: boolean;
 };
 
 export type ParsedDamageResult = {
@@ -53,23 +55,65 @@ export function findNamedEnemy(action: string) {
 }
 
 export function parseHitResult(text: string): ParsedHitResult {
-  const label = text.match(/【判定】(.+)/)?.[1]?.trim();
-  const total = Number(text.match(/总计：(\d+)/)?.[1] || Number.NaN);
+  const label = text.match(/【判定】(.+)/)?.[1]?.trim()
+    || text.match(/銆愬垽瀹氥€?(.+)/)?.[1]?.trim();
+  const naturalRoll = Number(text.match(/d20[：:]\s*(\d+)/)?.[1] || Number.NaN);
+  const total = Number(text.match(/总计[：:]\s*(\d+)/)?.[1] || text.match(/鎬昏锛?\s*(\d+)/)?.[1] || Number.NaN);
   const dc = Number(text.match(/DC (\d+)/)?.[1] || Number.NaN);
-  const result = text.match(/结果：(成功|失败)/)?.[1];
+  const result = text.match(/结果[：:]\s*(成功|失败)/)?.[1]
+    || text.match(/缁撴灉锛?\s*(鎴愬姛|澶辫触)/)?.[1];
   const damageTotal = Number(text.match(/= (\d+)\s*$/m)?.[1] || 0);
+  const isCritical = naturalRoll === 20 || text.includes("暴击");
 
   return {
     label,
     total,
     dc,
-    success: result ? result === "成功" : total >= dc,
-    damageTotal
+    success: result ? (result === "成功" || result === "鎴愬姛") : (isCritical || total >= dc),
+    damageTotal,
+    naturalRoll,
+    isCritical
   };
 }
 
 export function parseDamageResult(text: string): ParsedDamageResult {
-  const label = text.match(/【伤害】(.+?)\s+\d+d\d+/)?.[1]?.trim();
+  const label = text.match(/【伤害】(.+?)\s+\d+d\d+/)?.[1]?.trim()
+    || text.match(/銆愪激瀹炽€?(.+?)\s+\d+d\d+/)?.[1]?.trim();
+  const total = Number(text.match(/= (\d+)\s*$/m)?.[1] || Number.NaN);
+
+  return {
+    label,
+    total
+  };
+}
+
+export function parseCombatHitResult(text: string): ParsedHitResult {
+  const label = text.match(/【判定】\s*(.+)/)?.[1]?.trim();
+  const naturalRoll = Number(text.match(/d20[=:：]\s*(\d+)/)?.[1] || Number.NaN);
+  const total = Number(text.match(/总计[：:]\s*(\d+)/)?.[1] || Number.NaN);
+  const dc = Number(text.match(/DC (\d+)/)?.[1] || Number.NaN);
+  const result = text.match(/结果[：:]\s*(成功|失败)/)?.[1];
+  const damageTotal = Number(text.match(/= (\d+)\s*$/m)?.[1] || 0);
+  const isCritical = naturalRoll === 20 || text.includes("暴击");
+  const success = naturalRoll === 1
+    ? false
+    : result
+      ? result === "成功"
+      : (isCritical || total >= dc);
+
+  return {
+    label,
+    total,
+    dc,
+    success,
+    damageTotal,
+    naturalRoll,
+    isCritical
+  };
+}
+
+export function parseCombatDamageResult(text: string): ParsedDamageResult {
+  const label = text.match(/【伤害】\s*(.+?)\s+\d+d\d+/)?.[1]?.trim();
   const total = Number(text.match(/= (\d+)\s*$/m)?.[1] || Number.NaN);
 
   return {
@@ -84,7 +128,7 @@ export function buildSuggestedCheck(action: string): GamePatch["pendingCheck"] |
       label: "看出线索真假",
       abilityKey: "int",
       dc: 12,
-      reason: "眼前线索杂乱，需要先分辨哪条能继续追下去。",
+      reason: "眼前线索杂乱，需要先分辨哪条值得继续追下去。",
       risk: "如果失败，你会看漏关键处，或者惊动旁人。"
     };
   }
@@ -118,7 +162,7 @@ export function buildShuangErSupportPatch(state: GameState): GamePatch | undefin
     return {
       newItem: {
         id: "shuang-er-medicine",
-        name: "双儿包好的药囊",
+        name: "双儿包好的药包",
         desc: "双儿把止血和行气的药都细细包好，轻声叮嘱你别再硬撑。",
         count: 1,
         type: "consumable",
@@ -126,7 +170,7 @@ export function buildShuangErSupportPatch(state: GameState): GamePatch | undefin
         hpRestore: 6
       },
       storyFlagsAdd: ["support:shuang-er:medicine"],
-      systemNote: "双儿悄悄替你备下了一只药囊。"
+      systemNote: "双儿悄悄替你备下了一只药包。"
     };
   }
 
