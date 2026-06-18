@@ -14,14 +14,15 @@ export const SETUP_KEY = "jianghu-dm-has-played-v2";
 export const BGM_KEY = "jianghu-dm-bgm-v1";
 export const BGM_VOLUME_KEY = "jianghu-dm-bgm-volume-v1";
 export const WORLD_STEP = 4;
+export const QI_INVEST_LIMIT = 6;
 export const PLAYABLE_ORIGIN_ID = "nameless-wanderer";
 
 const DEEPSEEK_BASE_URL = "https://api.deepseek.com";
-const DEEPSEEK_CHAT_COMPLETIONS_URL = `${DEEPSEEK_BASE_URL}/chat/completions`;
-const DS_FLASH_MODEL = "deepseek-v4-flash";
-const DS_PRO_MODEL = "deepseek-v4-pro";
+export const DEEPSEEK_CHAT_COMPLETIONS_URL = `${DEEPSEEK_BASE_URL}/chat/completions`;
+export const DS_FLASH_MODEL = "deepseek-v4-flash";
+export const DS_PRO_MODEL = "deepseek-v4-pro";
 
-const PROVIDER_DEFAULTS: Record<ApiProvider, { apiUrl: string; model: string }> = {
+export const PROVIDER_DEFAULTS: Record<ApiProvider, { apiUrl: string; model: string }> = {
   openai: {
     apiUrl: "https://api.openai.com/v1/chat/completions",
     model: "gpt-4.1-mini"
@@ -35,6 +36,12 @@ const PROVIDER_DEFAULTS: Record<ApiProvider, { apiUrl: string; model: string }> 
     model: ""
   }
 };
+
+export const PROVIDER_OPTIONS: Array<{ value: ApiProvider; label: string }> = [
+  { value: "openai", label: "OpenAI" },
+  { value: "deepseek", label: "DeepSeek" },
+  { value: "custom", label: "自定义" }
+];
 
 export function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
