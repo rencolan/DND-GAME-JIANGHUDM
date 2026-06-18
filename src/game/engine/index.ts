@@ -1,4 +1,5 @@
 import type { GamePatch, GameState, Npc } from "../../types";
+export { applyPatchToState, normalizeGameState } from "./state";
 
 function currentLocationName(state: GameState) {
   return state.locations.find((location) => location.current)?.name || "Unknown location";
