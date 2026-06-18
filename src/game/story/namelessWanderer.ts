@@ -11,6 +11,7 @@ import type {
 } from "../../types";
 
 export const NAMELESS_WANDERER_CHAPTER_ID = "nameless-wanderer-ch1";
+export const NAMELESS_WANDERER_TUTORIAL_ENEMY = "拦路泼皮";
 export const QUEST_WANDERER_1 = "quest-wanderer-1";
 export const QUEST_WANDERER_2 = "quest-wanderer-2";
 export const QUEST_WANDERER_3 = "quest-wanderer-3";
@@ -23,6 +24,12 @@ const CHECK_TRACK_SCHOLAR = "track_scholar";
 const CHECK_SAVE_INNKEEPER = "save_innkeeper";
 const CHOICE_ACCEPT_SHUANGER = "accept_shuang_er";
 const CHOICE_DECLINE_SHUANGER = "decline_shuang_er";
+
+const openingObjective: ObjectiveHint = {
+  title: "入局引导",
+  text: "先在客栈落脚，看看掌柜、双儿和无量山的风声。",
+  location: "大理城"
+};
 
 type MainQuestBlueprint = {
   id: string;
@@ -108,6 +115,8 @@ const mainQuestBlueprints: Record<string, MainQuestBlueprint> = {
 };
 
 const legacyStageMap: Record<string, NamelessWandererChapterStage> = {
+  tutorial_story: "tutorial_story",
+  tutorial_combat: "tutorial_combat",
   intro: "intro",
   "inn-settled": "first_assignment",
   "wuliang-rumor": "track_shadow",
@@ -135,6 +144,96 @@ function hasQuestStatus(state: GameState, questId: string, status?: Quest["statu
 
 function hasStoryFlag(state: GameState, flag: string) {
   return state.storyFlags.includes(flag);
+}
+
+export function isNamelessTutorialStage(state: Pick<GameState, "chapterState">) {
+  return state.chapterState.id === NAMELESS_WANDERER_CHAPTER_ID
+    && (state.chapterState.stage === "tutorial_story" || state.chapterState.stage === "tutorial_combat");
+}
+
+export function isNamelessTutorialCombatStage(state: Pick<GameState, "chapterState">) {
+  return state.chapterState.id === NAMELESS_WANDERER_CHAPTER_ID && state.chapterState.stage === "tutorial_combat";
+}
+
+export function buildNamelessTutorialBackground(name: string) {
+  const hero = name.trim() || "无名客";
+  return `【说书人】话说江湖之上，成名人物各有门第来历，或出王侯公卿之家，或自名山古刹之中，偏你${hero}无门无派，只带一身还算硬朗的筋骨，和几招半生不熟的江湖把式，在风尘里走南闯北。你曾在滇西旧道上替一个受伤商旅挡过一回横祸，也正是那一夜，刀光在雨里一闪，才教你真正明白：江湖饭并不是那么好吃的。那时前路泥泞，身后是翻倒的车，前头却有泼皮提棍拦路，口口声声要你留下财物和性命。偏那商旅早已伤得抬不起头，这一口气若不由你替他撑住，只怕两条命都要交代在荒山野雨之间。`;
+}
+
+export function buildNamelessTutorialCombatIntroText(name: string) {
+  const hero = name.trim() || "无名客";
+  return `【说书人】说时迟，那泼皮把棍梢往泥地里一顿，溅得泥水四散，冷笑道：“瞧你也不像什么豪杰，偏要来充这份好汉。”破车旁那商旅蜷作一团，连呻吟都压在喉间。${hero}心知此时再退半步，今夜便再无退路可言。既如此，便只好收住杂念，先争这一手。`;
+}
+
+export function buildNamelessTutorialObjective(step: "story" | "initiative" | "attack" | "damage" | "repeat"): ObjectiveHint {
+  if (step === "story") {
+    return {
+      title: "旧事前缘",
+      text: "先看清无名客这一段旧事。定一定神，再入眼前这场拦路小斗。",
+      location: "旧路回闪"
+    };
+  }
+
+  if (step === "initiative") {
+    return {
+      title: "教学第一步：掷先攻",
+      text: "先点开待先攻，掷一次身法（DEX）。谁先抢到这一步，谁就先动手。",
+      location: "旧路回闪"
+    };
+  }
+
+  if (step === "attack") {
+    return {
+      title: "教学第二步：掷攻击",
+      text: "轮到你出手时，先选一门武学做攻击判定。命中以后，才会进入伤害结算。",
+      location: "旧路回闪"
+    };
+  }
+
+  if (step === "damage") {
+    return {
+      title: "教学第三步：掷伤害",
+      text: "命中并不等于已经造成伤害。继续掷出这招的伤害骰，才算真正打实。",
+      location: "旧路回闪"
+    };
+  }
+
+  return {
+    title: "继续战斗",
+    text: "一轮没打完也正常。照旧先掷攻击，命中后再掷伤害，直到把拦路泼皮打退。",
+    location: "旧路回闪"
+  };
+}
+
+export function buildNamelessTutorialTransitionText(kind: "won" | "skipped") {
+  const prelude = kind === "won"
+    ? "那一架打到后来，你总算护住了自己，也护住了那点不肯轻易折断的心气。自此以后，你愈发明白，江湖路上要活命，靠不得旁人，只能靠自己先把架子立稳。"
+    : "那段旧事你未必愿意细想，可江湖人心里都明白，真正叫人长记性的，从来不是说书人口里的热闹，而是刀口擦身那一瞬的冷。";
+  return `【说书人】${prelude}\n【说书人】大理城里人声未歇，无量山那边的风波却已经吹到了客栈门口。你先歇脚，先看人，再决定自己要不要踩进这摊麻烦。`;
+}
+
+export function buildNamelessTutorialCompletionPatch(kind: "won" | "skipped"): GamePatch {
+  return {
+    location: "大理城",
+    sceneType: "inn",
+    objectiveUpdate: openingObjective,
+    chapterStateUpdate: setChapterStage("intro"),
+    storyFlagsAdd: [
+      kind === "won" ? "tutorial:completed" : "tutorial:skipped",
+      stageFlag("intro")
+    ],
+    storyFlagsRemove: ["tutorial:active"],
+    pendingCheck: undefined,
+    pendingDamage: undefined,
+    combatAction: "exit",
+    combatUpdate: {
+      phase: "ended",
+      stakes: "旧路上的凶险已经压下，眼前该先寻个安稳落脚处。"
+    },
+    systemNote: kind === "won"
+      ? "教学战斗已完成，正式开场接上了。"
+      : "你跳过了教学战斗，正式开场已接上。"
+  };
 }
 
 function hasRouteStage(state: GameState, stage: string) {
@@ -206,6 +305,7 @@ function buildCheck(label: string, dc: number, abilityKey: PendingCheck["ability
 
 function resolveFirstAction(state: GameState): GamePatch | undefined {
   if (state.chapterState.id !== NAMELESS_WANDERER_CHAPTER_ID) return undefined;
+  if (isNamelessTutorialStage(state)) return undefined;
   if (hasStoryFlag(state, triggerFlag("onFirstAction", QUEST_WANDERER_1))) return undefined;
   if (
     hasQuestStatus(state, QUEST_WANDERER_1) ||
@@ -325,6 +425,9 @@ function resolveQuestResolved(state: GameState, questId: string): GamePatch | un
 
 function resolveCombatWin(state: GameState, enemyName?: string): GamePatch | undefined {
   if (state.chapterState.id !== NAMELESS_WANDERER_CHAPTER_ID) return undefined;
+  if (isNamelessTutorialCombatStage(state) && (!enemyName || enemyName.includes(NAMELESS_WANDERER_TUTORIAL_ENEMY))) {
+    return buildNamelessTutorialCompletionPatch("won");
+  }
   if (!hasQuestStatus(state, QUEST_WANDERER_3, "active")) return undefined;
   if (enemyName && !enemyName.includes("黑衣刺客")) return undefined;
 

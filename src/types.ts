@@ -12,6 +12,8 @@ export type RelationshipTier = "stranger" | "familiar" | "trusted" | "confidant"
 export type RelationshipRouteKind = "bond" | "romance" | "retainer";
 export type RelationshipRouteStage = "unawakened" | "met" | "trust" | "partiality" | "follow" | "enduring";
 export type NamelessWandererChapterStage =
+  | "tutorial_story"
+  | "tutorial_combat"
   | "intro"
   | "first_assignment"
   | "track_shadow"

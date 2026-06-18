@@ -9,6 +9,7 @@ import type {
   OriginTemplate,
   SceneType
 } from "./types";
+import { calculateAcFromDex, calculateHpFromCon, calculateMaxQi } from "./game/rules";
 
 const rasterPortraitIds = new Set([
   "a-zhu",
@@ -69,16 +70,20 @@ const makeCharacter = (
   qi: number,
   martialArts: MartialArt[],
   extra: Partial<Character> = {}
-): Character => ({
+): Character => {
+  const hp = calculateHpFromCon(focus[2]);
+  const maxQi = calculateMaxQi(qi, focus[5]);
+
+  return ({
   id,
   name,
   title,
   portrait: portrait(id),
-  hp: 20 + Math.max(0, focus[2] - 8) * 2,
-  maxHp: 20 + Math.max(0, focus[2] - 8) * 2,
-  qi,
-  maxQi: qi,
-  ac: 10 + Math.floor((focus[1] - 10) / 2),
+  hp,
+  maxHp: hp,
+  qi: maxQi,
+  maxQi,
+  ac: calculateAcFromDex(focus[1]),
   abilities: [
     { key: "str", label: "力道", value: focus[0] },
     { key: "dex", label: "身法", value: focus[1] },
@@ -91,6 +96,7 @@ const makeCharacter = (
   inventory: defaultInventory(),
   ...extra
 });
+};
 
 export const defaultMartialArts = {
   dali: [
@@ -101,7 +107,7 @@ export const defaultMartialArts = {
   ],
   jianghu: [
     art("jianghu-daolu", "江湖刀路", "external", "str", "1d6", "刀法直接，适合抢身位与逼退对手。", 0, { grade: "粗豪", source: "江湖旧路" }),
-    art("xiangwei-qinggong", "巷尾轻功", "external", "dex", "1d4", "借步换位，偏重闪身与缠斗。", 0, { grade: "入门", source: "江湖旧路" })
+    art("kuaidao-xiaojia", "快刀小架", "external", "dex", "1d6", "短刀小架简洁利落，专为近身抢位开门。", 0, { grade: "入门", source: "江湖旧路" })
   ],
   shaolin: [
     art("shaolin-changquan", "少林长拳", "external", "str", "1d4", "拳架平正，适合稳步压近。", 0, { grade: "正宗", source: "少林" }),
@@ -164,6 +170,18 @@ export const defaultMartialArts = {
 export const martialArtCatalog: MartialArt[] = Object.values(defaultMartialArts).flatMap((entries) => [...entries]);
 
 export const enemyPresets = [
+  {
+    id: "tutorial-ruffian",
+    name: "拦路泼皮",
+    hp: 14,
+    maxHp: 14,
+    qi: 0,
+    maxQi: 0,
+    ac: 10,
+    abilities: { str: 10, dex: 10, con: 10, int: 8, cha: 8, wis: 8 },
+    martialArts: [defaultMartialArts.jianghu.find((entry) => entry.id === "jianghu-daolu")!],
+    tags: ["教学敌人", "杂敌", "低压"]
+  },
   {
     id: "black-assassin",
     name: "黑衣刺客",
@@ -271,7 +289,7 @@ export const originTemplates: OriginTemplate[] = [
 export const routeGuides: Record<string, { sceneType: SceneType; objective: ObjectiveHint; intro: string }> = {
   "nameless-wanderer": {
     sceneType: "inn",
-    objective: { title: "入局引导", text: "先在客栈落脚，看看掌柜、双儿和无量山的风声。", location: "大理城" },
+    objective: { title: "教学前导", text: "先看清无名客的旧事，再借一场小斗熟悉战斗流程。", location: "旧路回闪" },
     intro: originTemplates[0].intro
   }
 };

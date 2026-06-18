@@ -1,4 +1,11 @@
 import type { ApiConfig, ApiProvider, GameState } from "../types";
+import {
+  CREATION_BASE_TOTAL,
+  CREATION_FREE_POINTS,
+  CREATION_RANDOM_CAP,
+  CREATION_STAT_MAX,
+  CREATION_STAT_MIN
+} from "../game/rules";
 import type { RollPackage } from "./sessionTypes";
 
 export const SAVE_KEY = "jianghu-dm-save-v3";
@@ -33,19 +40,53 @@ export function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
 }
 
-function roll3d6() {
-  return Math.ceil(Math.random() * 6) + Math.ceil(Math.random() * 6) + Math.ceil(Math.random() * 6);
+export const EMPTY_ROLL_PACKAGE: RollPackage = [0, 0, 0, 0, 0, 0];
+
+function makeRandomAbilityBase(): RollPackage {
+  const values = [CREATION_STAT_MIN, CREATION_STAT_MIN, CREATION_STAT_MIN, CREATION_STAT_MIN, CREATION_STAT_MIN, CREATION_STAT_MIN];
+  let remaining = CREATION_BASE_TOTAL - (CREATION_STAT_MIN * values.length);
+
+  while (remaining > 0) {
+    const availableIndexes = values
+      .map((value, index) => value < CREATION_RANDOM_CAP ? index : -1)
+      .filter((index) => index >= 0);
+
+    if (!availableIndexes.length) break;
+
+    const pickedIndex = availableIndexes[Math.floor(Math.random() * availableIndexes.length)];
+    values[pickedIndex] += 1;
+    remaining -= 1;
+  }
+
+  return values as RollPackage;
 }
 
 export function makeAbilityChoices(): RollPackage[] {
-  return Array.from({ length: 3 }, () => [
-    roll3d6(),
-    roll3d6(),
-    roll3d6(),
-    roll3d6(),
-    roll3d6(),
-    roll3d6()
-  ]) as RollPackage[];
+  return Array.from({ length: 3 }, () => makeRandomAbilityBase());
+}
+
+export function sumRollPackage(values: RollPackage) {
+  return values.reduce((total, value) => total + value, 0);
+}
+
+export function remainingAllocationPoints(allocation: RollPackage) {
+  return CREATION_FREE_POINTS - sumRollPackage(allocation);
+}
+
+export function applyAllocation(base: RollPackage, allocation: RollPackage): RollPackage {
+  return base.map((value, index) => value + allocation[index]) as RollPackage;
+}
+
+export function canAdjustAllocation(
+  base: RollPackage,
+  allocation: RollPackage,
+  abilityIndex: number,
+  delta: -1 | 1
+) {
+  const nextValue = allocation[abilityIndex] + delta;
+  if (delta < 0) return nextValue >= 0;
+  if (remainingAllocationPoints(allocation) <= 0) return false;
+  return base[abilityIndex] + nextValue <= CREATION_STAT_MAX;
 }
 
 export function readJson<T>(key: string, fallback: T): T {

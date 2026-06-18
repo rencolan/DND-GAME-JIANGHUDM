@@ -19,8 +19,7 @@ import {
   enemyPresets,
   initialGameState,
   martialArtCatalog,
-  originTemplates,
-  routeGuides
+  originTemplates
 } from "../data";
 import {
   getNextEnemyPendingCheck,
@@ -37,6 +36,16 @@ import {
   normalizeGameState as normalizeGameStateEngine
 } from "../game/engine";
 import {
+  CREATION_FREE_POINTS,
+  calculateAcFromDex,
+  calculateHpFromCon,
+  calculateMaxQi
+} from "../game/rules";
+import {
+  buildNamelessTutorialBackground,
+  buildNamelessTutorialObjective,
+  isNamelessTutorialCombatStage,
+  isNamelessTutorialStage,
   NAMELESS_WANDERER_CHAPTER_ID,
   QUEST_WANDERER_1,
   QUEST_WANDERER_2,
@@ -74,6 +83,7 @@ import type {
   RollMode,
   SceneType
 } from "../types";
+import { applyAllocation, canAdjustAllocation, remainingAllocationPoints } from "./sessionShared";
 import type { GameSession } from "./useGameSession";
 
 export const SAVE_KEY = "jianghu-dm-save-v3";
@@ -114,8 +124,6 @@ const PROVIDER_DEFAULTS: Record<ApiProvider, { apiUrl: string; model: string }> 
 
 const playableOrigins: OriginTemplate[] = originTemplates;
 
-const playableRouteGuides: Record<string, { sceneType: SceneType; objective: GameState["objective"]; intro: string }> = routeGuides;
-
 const abilityLabels: Record<string, string> = {
   str: "力道",
   dex: "身法",
@@ -150,6 +158,15 @@ const abilityDefinitions: Record<string, { title: string; text: string }> = {
     title: "心境",
     text: "决定定力、判断、守势、调息与克制。越乱的局面，越需要心境稳得住，才不会自己先散。"
   }
+};
+
+const abilityEffectLabels: Record<keyof typeof abilityLabels, string> = {
+  str: "外功命中 / 伤害",
+  dex: "先攻 / 闪避 / 护甲",
+  con: "生命 / 抗打",
+  int: "拆招 / 学武 / 技巧",
+  cha: "奇遇 / 交涉 / 福缘",
+  wis: "内力 / 定力 / 内功"
 };
 
 const sceneAssets: Record<SceneType, string> = {
@@ -673,8 +690,8 @@ function normalizeCombat(combat: GameState["combat"] | undefined): GameState["co
 export const normalizeGameState = normalizeGameStateEngine;
 
 function makeCharacterFromOrigin(name: string, origin: OriginTemplate, packageValues: RollPackage): Character {
-  const con = packageValues[2];
-  const hp = 18 + Math.max(0, con - 10) * 2;
+  const hp = calculateHpFromCon(packageValues[2]);
+  const maxQi = calculateMaxQi(origin.qiStart, packageValues[5]);
 
   return relabelAbilities({
     id: `hero-${origin.id}-${Date.now()}`,
@@ -683,9 +700,9 @@ function makeCharacterFromOrigin(name: string, origin: OriginTemplate, packageVa
     portrait: "../assets/portraits/nameless-wanderer.png",
     hp,
     maxHp: hp,
-    qi: origin.qiStart,
-    maxQi: origin.qiStart,
-    ac: 10 + abilityMod(packageValues[1]),
+    qi: maxQi,
+    maxQi,
+    ac: calculateAcFromDex(packageValues[1]),
     abilities: [
       { key: "str", label: abilityLabels.str, value: packageValues[0] },
       { key: "dex", label: abilityLabels.dex, value: packageValues[1] },
@@ -2496,11 +2513,9 @@ function SetupScreen(props: {
   customName: string;
   setCustomName: (value: string) => void;
   selectedOrigin: OriginTemplate;
-  selectedOriginId: string;
-  setSelectedOriginId: (value: string) => void;
   abilityChoices: RollPackage[];
-  selectedChoiceIndex: number;
-  setSelectedChoiceIndex: (value: number) => void;
+  abilityAllocation: RollPackage;
+  setAbilityAllocation: (value: RollPackage) => void;
   onStart: () => void;
   onContinue?: () => void;
 }) {
@@ -2508,16 +2523,31 @@ function SetupScreen(props: {
     customName,
     setCustomName,
     selectedOrigin,
-    selectedOriginId,
-    setSelectedOriginId,
     abilityChoices,
-    selectedChoiceIndex,
-    setSelectedChoiceIndex,
+    abilityAllocation,
+    setAbilityAllocation,
     onStart,
     onContinue
   } = props;
 
   const abilityOrder: Array<keyof typeof abilityLabels> = ["str", "dex", "con", "int", "cha", "wis"];
+  const baseChoice = abilityChoices[0] || ([0, 0, 0, 0, 0, 0] as RollPackage);
+  const finalChoice = applyAllocation(baseChoice, abilityAllocation);
+  const pointsLeft = remainingAllocationPoints(abilityAllocation);
+  const previewStats = {
+    hp: calculateHpFromCon(finalChoice[2]),
+    ac: calculateAcFromDex(finalChoice[1]),
+    qi: calculateMaxQi(selectedOrigin.qiStart, finalChoice[5]),
+    extBonus: Math.max(0, abilityMod(finalChoice[0])),
+    intBonus: Math.max(0, abilityMod(finalChoice[5]))
+  };
+
+  function adjustAllocation(index: number, delta: -1 | 1) {
+    if (!canAdjustAllocation(baseChoice, abilityAllocation, index, delta)) return;
+    const next = [...abilityAllocation] as RollPackage;
+    next[index] += delta;
+    setAbilityAllocation(next);
+  }
 
   return (
     <section className="setup-screen">
@@ -2525,7 +2555,7 @@ function SetupScreen(props: {
         <header className="setup-title">
           <p>江湖 DM 新版开局</p>
           <h1>入局之前</h1>
-          <span>挑一个出身，选一组命数，先从大理、无量或少室山附近踏进这趟江湖。</span>
+          <span>无名客只有一张随机底盘，再给你 {CREATION_FREE_POINTS} 点自由分配。页面尽量压成一屏，开局信息在这里一次看完。</span>
         </header>
 
         {onContinue && (
@@ -2534,53 +2564,96 @@ function SetupScreen(props: {
           </div>
         )}
 
-        <div className="setup-panel">
+        <div className="setup-panel compact">
           <label className="name-field">
             姓名
             <input value={customName} onChange={(event) => setCustomName(event.target.value)} maxLength={8} />
           </label>
 
-          <div className="origin-grid">
-            {playableOrigins.map((origin) => (
-              <button
-                key={origin.id}
-                type="button"
-                className={selectedOriginId === origin.id ? "selected" : ""}
-                onClick={() => setSelectedOriginId(origin.id)}
-              >
-                <b>{origin.name}</b>
-                <span>{origin.desc}</span>
-              </button>
-            ))}
-          </div>
-
           <article className="origin-hook">
             <b>{selectedOrigin.name}</b>
-            <span>{selectedOrigin.setupHint}</span>
+            <span>{selectedOrigin.setupHint} 入局后会先看到无名客旧事，再顺势切进一场教学战斗，结束后才接回正式开场。</span>
           </article>
 
-          <section className="roll-packages">
+          <section className="roll-packages setup-base-card">
             <header>
-              <b>roll3选1</b>
-              <span>每组属性都按 3d6 掷出</span>
+              <b>随机底盘</b>
+              <span>固定 1 组</span>
             </header>
 
-            {abilityChoices.map((choice, index) => (
-              <button
-                key={`${selectedOrigin.id}-${index}`}
-                type="button"
-                className={selectedChoiceIndex === index ? "selected" : ""}
-                onClick={() => setSelectedChoiceIndex(index)}
-              >
-                <strong>命数 {index + 1}</strong>
-                <div>
-                  {choice.map((value, abilityIndex) => {
-                    const key = abilityOrder[abilityIndex];
-                    return <span key={key}>{abilityLabels[key]} {value}</span>;
-                  })}
-                </div>
-              </button>
-            ))}
+            <button type="button">
+              <strong>本局底盘</strong>
+              <div>
+                {baseChoice.map((value, abilityIndex) => {
+                  const key = abilityOrder[abilityIndex];
+                  return <span key={key}>{abilityLabels[key]} {value}</span>;
+                })}
+              </div>
+            </button>
+          </section>
+
+          <section className="roll-packages">
+            <header className="points-header">
+              <b>自由加点</b>
+              <span>剩余 <b>{pointsLeft}</b> / {CREATION_FREE_POINTS}</span>
+            </header>
+
+            <div className="allocator">
+              {abilityOrder.map((key, index) => (
+                <article key={key}>
+                  <div>
+                    <strong>{abilityLabels[key]}</strong>
+                    <small>底 {baseChoice[index]} + {abilityAllocation[index]}</small>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => adjustAllocation(index, -1)}
+                    disabled={!canAdjustAllocation(baseChoice, abilityAllocation, index, -1)}
+                  >
+                    -
+                  </button>
+                  <b>{finalChoice[index]}</b>
+                  <button
+                    type="button"
+                    onClick={() => adjustAllocation(index, 1)}
+                    disabled={!canAdjustAllocation(baseChoice, abilityAllocation, index, 1)}
+                  >
+                    +
+                  </button>
+                </article>
+              ))}
+            </div>
+          </section>
+
+          <section className="setup-guides">
+            <header>
+              <b>属性作用</b>
+              <span>加点前先看一眼。这里只写最直接的用途，避免第一次入局不知道该往哪项堆。</span>
+            </header>
+
+            <div className="setup-derived-preview">
+              <b>当前预览</b>
+              <div>
+                <span>生命 {previewStats.hp}</span>
+                <span>护甲 {previewStats.ac}</span>
+                <span>内力 {previewStats.qi}</span>
+                <span>外功加伤 +{previewStats.extBonus}</span>
+                <span>内功加伤 +{previewStats.intBonus}</span>
+                <span>起手武学 {selectedOrigin.martialArts[0]?.name || "江湖把式"}</span>
+              </div>
+            </div>
+
+            <div className="setup-guide-grid">
+              {abilityOrder.map((key) => (
+                <article key={key} className="setup-guide-card">
+                  <div>
+                    <b>{abilityLabels[key]}</b>
+                    <span>{abilityEffectLabels[key]}</span>
+                  </div>
+                  <p>{abilityDefinitions[key].text}</p>
+                </article>
+              ))}
+            </div>
           </section>
 
           <button className="primary-action" type="button" onClick={onStart}>
@@ -2671,11 +2744,9 @@ export function LegacyApp({ session }: { session: GameSession }) {
     customName,
     setCustomName,
     selectedOriginId,
-    setSelectedOriginId,
     abilityChoices,
-    setAbilityChoices,
-    selectedChoiceIndex,
-    setSelectedChoiceIndex,
+    abilityAllocation,
+    setAbilityAllocation,
     drawerOpen,
     setDrawerOpen,
     activeTab,
@@ -2716,6 +2787,8 @@ export function LegacyApp({ session }: { session: GameSession }) {
     continueGame,
     exportSave,
     resetGame,
+    beginTutorialCombat,
+    skipTutorial: skipTutorialSession,
     submitAction: submitActionSession,
     submitDiceResult: submitDiceResultSession,
     submitDamageResult: submitDamageResultSession,
@@ -2765,6 +2838,9 @@ export function LegacyApp({ session }: { session: GameSession }) {
   const sceneBackground = sceneAssets[game.sceneType] || sceneAssets.market;
   const qiLimit = Math.min(QI_INVEST_LIMIT, game.character.qi);
   const lowQi = game.character.qi <= 1;
+  const tutorialActive = isNamelessTutorialStage(game);
+  const tutorialCombatActive = isNamelessTutorialCombatStage(game);
+  const tutorialStoryActive = tutorialActive && !tutorialCombatActive;
   const selectedLocation = game.locations.find((location) => location.id === selectedLocationId)
     || game.locations.find((location) => location.current)
     || game.locations[0];
@@ -3419,10 +3495,8 @@ export function LegacyApp({ session }: { session: GameSession }) {
   }
 
   function startOriginGame() {
-    const choice = abilityChoices[selectedChoiceIndex] || abilityChoices[0];
-    const hero = makeCharacterFromOrigin(customName, selectedOrigin, choice);
-    const guide = playableRouteGuides[selectedOrigin.id];
-    const startLocation = guide?.objective.location || currentLocation(initialGameState);
+    const baseChoice = abilityChoices[0] || ([0, 0, 0, 0, 0, 0] as RollPackage);
+    const hero = makeCharacterFromOrigin(customName, selectedOrigin, applyAllocation(baseChoice, abilityAllocation));
 
     lockUi(1400);
     closePanels();
@@ -3431,25 +3505,22 @@ export function LegacyApp({ session }: { session: GameSession }) {
       setupComplete: true,
       originId: selectedOrigin.id,
       creationMode: "origin",
-      sceneType: guide?.sceneType || "market",
+      sceneType: "market",
       currentCharacterId: hero.id,
       character: hero,
       roster: [hero],
-      locations: initialGameState.locations.map((location) => ({
-        ...location,
-        current: location.name === startLocation,
-        unlocked: location.unlocked || location.name === startLocation
-      })),
+      locations: initialGameState.locations.map((location) => ({ ...location })),
       messages: [
-        { id: "m0", role: "dm", text: guide?.intro || selectedOrigin.intro },
-        { id: uid("system"), role: "system", text: `${hero.name}以“${selectedOrigin.name}”的身份入局。` }
+        { id: "m0", role: "dm", text: buildNamelessTutorialBackground(hero.name) },
+        { id: uid("system"), role: "system", text: `${hero.name}以“${selectedOrigin.name}”的身份入局，旧事先起，正篇稍后再开。` }
       ],
       chapterState: {
-        id: selectedOrigin.id === playableOrigins[0]?.id ? NAMELESS_WANDERER_CHAPTER_ID : `origin:${selectedOrigin.id}`,
-        stage: "intro"
+        id: NAMELESS_WANDERER_CHAPTER_ID,
+        stage: "tutorial_story"
       },
-      objective: guide?.objective || initialGameState.objective,
-      systemLog: ["入局引导已开始，首轮行动后才会正式派发任务。"]
+      objective: buildNamelessTutorialObjective("story"),
+      storyFlags: ["tutorial:active"],
+      systemLog: ["无名客旧事已展开，进入教学战斗后才会接回正式开场。"]
     }));
 
     localStorage.setItem(SETUP_KEY, "1");
@@ -3949,11 +4020,9 @@ export function LegacyApp({ session }: { session: GameSession }) {
         customName={customName}
         setCustomName={setCustomName}
         selectedOrigin={selectedOrigin}
-        selectedOriginId={selectedOriginId}
-        setSelectedOriginId={setSelectedOriginId}
         abilityChoices={abilityChoices}
-        selectedChoiceIndex={selectedChoiceIndex}
-        setSelectedChoiceIndex={setSelectedChoiceIndex}
+        abilityAllocation={abilityAllocation}
+        setAbilityAllocation={setAbilityAllocation}
         onStart={startOriginGame}
         onContinue={canContinue ? continueGame : undefined}
       />
@@ -4002,6 +4071,28 @@ export function LegacyApp({ session }: { session: GameSession }) {
           <b>{game.objective.title}</b>
           <p>{game.objective.text}</p>
           <small>{game.objective.location || locationName}{game.objective.npc ? ` · ${game.objective.npc}` : ""}</small>
+          {tutorialActive && (
+            <div className="objective-actions">
+              {tutorialStoryActive && (
+                <button
+                  type="button"
+                  className="primary-inline"
+                  onClick={beginTutorialCombat}
+                  disabled={controlsBlocked || busy}
+                >
+                  进入这一战
+                </button>
+              )}
+              <button
+                type="button"
+                className="secondary-inline"
+                onClick={skipTutorialSession}
+                disabled={controlsBlocked || busy}
+              >
+                跳过教学
+              </button>
+            </div>
+          )}
         </article>
 
         {game.combat.active && (

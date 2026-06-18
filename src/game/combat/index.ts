@@ -1,4 +1,5 @@
 import { enemyPresets } from "../../data";
+import { abilityModifier, calculateMartialDamageBonus } from "../rules";
 import type { GamePatch, GameState, MartialArt, PendingCheck } from "../../types";
 
 const DEFAULT_ENEMY_NAME = "黑衣刺客";
@@ -43,11 +44,7 @@ function firstEnemyArt(state: GameState) {
 }
 
 export function inferCombatStakes(enemyName: string) {
-  return `You need to stabilize ${enemyName} before the situation worsens.`;
-}
-
-function abilityModifier(value: number) {
-  return Math.floor((value - 10) / 2);
+  return `先稳住 ${enemyName}，别让局势继续被对方推着走。`;
 }
 
 function findAbilityModifier(abilities: GameState["character"]["abilities"] | undefined, abilityKey = "dex") {
@@ -91,13 +88,13 @@ function buildInitiativeCheck(state: GameState, enemyName?: string): GamePatch["
   const enemyInitiative = rollD20() + enemyDexMod;
 
   return {
-    label: `Roll initiative against ${foe}`,
+    label: `抢先手：${foe}`,
     abilityKey: "dex",
     dc: enemyInitiative,
-    reason: `${foe} is within striking distance. Whoever moves first controls the exchange.`,
-    risk: "If you lose initiative, the enemy acts first.",
-    enemyIntent: `${foe} is reading your opening and looking for first blood.`,
-    suggestedAction: "Use dexterity and timing to seize the first turn."
+    reason: `${foe} 已经逼到眼前，谁先起手，谁就先掌握这一轮节奏。`,
+    risk: "若失去先手，对方会先动。",
+    enemyIntent: `${foe} 正盯着你的起手，想抢在你前头压上来。`,
+    suggestedAction: "用身法和时机抢下先手。"
   };
 }
 
@@ -106,12 +103,12 @@ export function buildPlayerAttackCheck(state: GameState): GamePatch["pendingChec
 
   const enemyName = state.combat.enemy || DEFAULT_ENEMY_NAME;
   return {
-    label: `Attack ${enemyName}`,
+    label: `攻击 ${enemyName}`,
     dc: state.combat.enemyAc || 12,
-    reason: `Your opening is here. Commit to one martial art and make the attack roll.`,
-    risk: "On a miss, the enemy immediately takes the turn back.",
-    enemyIntent: `${enemyName} is waiting to punish any hesitation.`,
-    suggestedAction: "Choose one martial art and go straight for the attack roll."
+    reason: "现在轮到你回手。选定一门武学，先做攻击判定，命中后再结算伤害。",
+    risk: "若失手，对方会立刻把节奏抢回去。",
+    enemyIntent: `${enemyName} 正在等你失手，好顺势反压。`,
+    suggestedAction: "挑一门顺手的武学，直接掷攻击。"
   };
 }
 
@@ -119,12 +116,32 @@ export type EnemyTurnResult = {
   patch: GamePatch;
   summary: string;
   defeated: boolean;
+  details: {
+    actionLabel: string;
+    damageDice: string;
+    damageBonus: number;
+    naturalRoll: number;
+    total: number;
+    hit: boolean;
+    critical: boolean;
+    damage: number;
+    heroHpBefore: number;
+    heroHpAfter: number;
+    enemyHpBefore: number;
+    enemyHpAfter: number;
+    nextPhase: GamePatch["combatUpdate"] extends infer T
+      ? T extends { phase?: infer P }
+        ? P
+        : never
+      : never;
+  };
 };
 
 export function resolveEnemyTurn(state: GameState, advanceRound = true): EnemyTurnResult {
   const enemyName = state.combat.enemy || DEFAULT_ENEMY_NAME;
   const enemyArtPool = state.combat.enemyMartialArts || [];
   const enemyArt = enemyArtPool[Math.floor(Math.random() * Math.max(1, enemyArtPool.length))] || firstEnemyArt(state);
+  const actionLabel = enemyArt?.name || "一记快手";
   const attackAbility = enemyArt?.linkedAbility || "dex";
   const enemyAttackMod = findAbilityModifier(state.combat.enemyAbilities, attackAbility);
   const heroAc = state.character.ac || 10;
@@ -139,20 +156,36 @@ export function resolveEnemyTurn(state: GameState, advanceRound = true): EnemyTu
   const totalDamage = hit ? damageRoll.total + damageBonus : 0;
   const heroAfter = clamp(state.character.hp - totalDamage, 0, state.character.maxHp);
   const nextCheck = heroAfter > 0 ? buildPlayerAttackCheck(state) : undefined;
+  const nextPhase = heroAfter > 0 ? "awaiting_hit_check" : "ended";
   const summary = hit
-    ? `${enemyName} uses ${enemyArt?.name || "a quick strike"} and hits for ${totalDamage}${isCritical ? " (critical)" : ""}.`
-    : `${enemyName} uses ${enemyArt?.name || "a quick strike"} but misses.`;
+    ? `${enemyName}使出${actionLabel}，打中了你${totalDamage}点${isCritical ? "（暴击）" : ""}。`
+    : `${enemyName}使出${actionLabel}，却没能打实。`;
 
   return {
     summary,
     defeated: heroAfter <= 0,
+    details: {
+      actionLabel,
+      damageDice: enemyArt?.damageDice || "1d4",
+      damageBonus,
+      naturalRoll,
+      total,
+      hit,
+      critical: isCritical,
+      damage: totalDamage,
+      heroHpBefore: state.character.hp,
+      heroHpAfter: heroAfter,
+      enemyHpBefore: state.combat.enemyHp || 0,
+      enemyHpAfter: state.combat.enemyHp || 0,
+      nextPhase
+    },
     patch: {
       hpChange: hit ? -totalDamage : 0,
       pendingCheck: nextCheck,
       combatUpdate: {
         enemyQiCost: enemyArt?.category === "internal" ? enemyArt.baseQiCost : 0,
         enemyMartialArtUsed: enemyArt?.name,
-        phase: heroAfter > 0 ? "awaiting_hit_check" : "ended",
+        phase: nextPhase,
         roundDelta: heroAfter > 0 && advanceRound ? 1 : 0,
         stakes: inferCombatStakes(enemyName)
       },
@@ -171,18 +204,18 @@ export function getNextEnemyPendingCheck(state: GameState): GamePatch["pendingCh
   const enemyName = state.combat.enemy || DEFAULT_ENEMY_NAME;
 
   return {
-    label: `Respond to ${enemyName}'s next move`,
+    label: `应对 ${enemyName} 的下一手`,
     abilityKey: linkedAbility,
     martialArtId: nextArt?.id,
     dc: clamp((state.combat.enemyAc || 12) + 2, 11, 18),
     reason: nextArt
-      ? `${enemyName} is pressing with ${nextArt.name}.`
-      : `${enemyName} is trying to seize the initiative again.`,
-    risk: "If you fail, you take damage or lose position.",
+      ? `${enemyName}正借${nextArt.name}继续往前压。`
+      : `${enemyName}正试图重新把先手抢回去。`,
+    risk: "若失败，你会受伤或失位。",
     enemyIntent: nextArt
-      ? `${enemyName} wants to continue pressing with ${nextArt.name}.`
-      : `${enemyName} wants to keep the pressure on you.`,
-    suggestedAction: "You can brace, evade, counter, or break the rhythm."
+      ? `${enemyName}想借${nextArt.name}把你逼乱。`
+      : `${enemyName}想把压力一直续下去。`,
+    suggestedAction: "你可以硬接、闪躲、反击，或先拆掉对方的节奏。"
   };
 }
 
@@ -190,12 +223,12 @@ export function startCombat(state: GameState, enemyName: string, options: StartC
   const preset = findEnemyPreset(enemyName || DEFAULT_ENEMY_NAME);
   const pendingCheck = options.skipInitiative
     ? {
-      label: options.label || `Attack ${preset.name}`,
+      label: options.label || `攻击 ${preset.name}`,
       dc: options.dc ?? preset.ac,
-      reason: options.reason || `You already have the drop on ${preset.name}. Press the attack immediately.`,
-      risk: options.risk || "If you miss, the enemy recovers and counterattacks.",
-      enemyIntent: options.enemyIntent || `${preset.name} is trying to recover footing before you finish the opening.`,
-      suggestedAction: options.suggestedAction || "Choose a martial art and make the attack roll."
+      reason: options.reason || `你已经抢到了起手，眼下正好追击 ${preset.name}。`,
+      risk: options.risk || "若失手，对方会稳住脚跟再反扑。",
+      enemyIntent: options.enemyIntent || `${preset.name}想先稳住架子，再把这口气续回来。`,
+      suggestedAction: options.suggestedAction || "选一门武学，直接掷攻击判定。"
     }
     : buildInitiativeCheck(state, preset.name);
 
@@ -210,14 +243,22 @@ export function startCombat(state: GameState, enemyName: string, options: StartC
   };
 }
 
-export function prepareCombatDamageRoll(art: MartialArt, hitText: string, qiBonusSpend: number, isCritical = false): GamePatch {
+export function prepareCombatDamageRoll(
+  art: MartialArt,
+  hitText: string,
+  qiBonusSpend: number,
+  isCritical = false,
+  actor?: GameState["character"]
+): GamePatch {
+  const damageBonus = actor ? calculateMartialDamageBonus(actor.abilities, art) : art.damageBonus;
+
   return {
     pendingCheck: undefined,
     pendingDamage: {
       martialArtId: art.id,
       label: art.name,
       damageDice: art.damageDice,
-      damageBonus: art.damageBonus,
+      damageBonus,
       qiCost: art.category === "internal" ? art.baseQiCost : 0,
       qiBonusSpend,
       hitText,
@@ -260,8 +301,8 @@ export function resolveCombatInitiative(state: GameState, hit: CombatHitResult):
       stakes: inferCombatStakes(enemyName)
     },
     systemNote: hit.success
-      ? `You win initiative against ${enemyName}.`
-      : `${enemyName} wins initiative and acts first.`
+      ? `你抢到了 ${enemyName} 的先手。`
+      : `${enemyName}抢到了先手，先一步压了上来。`
   };
 }
 
@@ -278,8 +319,8 @@ export function resolveCombatHit(state: GameState, hit: CombatHitResult): GamePa
       stakes: inferCombatStakes(enemyName)
     },
     systemNote: hit.success
-      ? `The attack roll connects on ${enemyName}. Roll damage next.`
-      : `Your attack misses ${enemyName}.`
+      ? `这一击已经打中 ${enemyName}，下一步该掷伤害。`
+      : `你这一击没能打中 ${enemyName}。`
   };
 }
 

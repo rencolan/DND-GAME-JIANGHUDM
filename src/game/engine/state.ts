@@ -1,5 +1,6 @@
-import { enemyPresets, initialGameState, martialArtCatalog } from "../../data";
+import { enemyPresets, initialGameState, martialArtCatalog, originTemplates } from "../../data";
 import { normalizeChapterStateForNameless } from "../story/namelessWanderer";
+import { abilityModifier, recalculateCharacterDerivedStats } from "../rules";
 import type {
   ChapterState,
   Character,
@@ -193,7 +194,7 @@ function relabelAbilities(character: Character): Character {
     equipment: _legacyEquipment,
     ...rest
   } = character as Character & { inventory?: Item[]; equipment?: unknown };
-  return {
+  const relabeled = {
     ...rest,
     abilities: (character.abilities || []).map((ability) => ({
       ...ability,
@@ -202,6 +203,12 @@ function relabelAbilities(character: Character): Character {
     martialArts: (character.martialArts || []).map((art) => normalizeMartialArt({ ...art, name: art.name })),
     inventory: normalizeInventory(inventory)
   };
+  const baseQi = originTemplates.find((origin) => origin.id === relabeled.originId)?.qiStart
+    ?? Math.max(1, (relabeled.maxQi || relabeled.qi || 1) - abilityModifier(
+      relabeled.abilities.find((ability) => ability.key === "wis")?.value ?? 10
+    ));
+
+  return recalculateCharacterDerivedStats(relabeled, baseQi);
 }
 
 function fallbackObjective(state: GameState) {
