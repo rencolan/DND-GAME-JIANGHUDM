@@ -9,4 +9,7 @@ export type RollingState = {
   label: string;
   total: number;
   detail: string;
+  sides?: number;
+  face?: number;
+  notation?: string;
 };

@@ -164,6 +164,7 @@ export interface PendingCheck {
   label: string;
   abilityKey?: string;
   martialArtId?: string;
+  rollMode?: RollMode;
   dc: number;
   reason: string;
   risk?: string;

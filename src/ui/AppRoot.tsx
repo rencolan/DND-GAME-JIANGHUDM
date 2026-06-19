@@ -1,7 +1,24 @@
 import { useGameSession } from "./useGameSession";
-import { LegacyApp } from "./LegacyApp";
+import { SetupScreen } from "./components/SetupScreen";
+import { GameScreen } from "./components/GameScreen";
 
 export function AppRoot() {
   const session = useGameSession();
-  return <LegacyApp session={session} />;
+
+  if (!session.game.setupComplete) {
+    return (
+      <SetupScreen
+        customName={session.customName}
+        setCustomName={session.setCustomName}
+        selectedOrigin={session.selectedOrigin}
+        abilityChoices={session.abilityChoices}
+        abilityAllocation={session.abilityAllocation}
+        setAbilityAllocation={session.setAbilityAllocation}
+        onStart={session.startOriginGame}
+        onContinue={session.canContinue ? session.continueGame : undefined}
+      />
+    );
+  }
+
+  return <GameScreen session={session} />;
 }

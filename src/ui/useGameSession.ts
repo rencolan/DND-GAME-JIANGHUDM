@@ -9,13 +9,14 @@ import {
   stripJsonBlock,
   withSceneFallback
 } from "../game/ai/helpers";
-import { buildCombatActionIntentPrompt, buildCombatNarrationPrompt, buildSystemPrompt } from "../game/ai/prompt";
-import { prepareCombatDamageRoll, startCombat } from "../game/combat";
+import { buildCombatActionCheckPrompt, buildCombatNarrationPrompt, buildSystemPrompt } from "../game/ai/prompt";
+import { doubleDamageDice, parseDamageDice, prepareCombatDamageRoll, startCombat } from "../game/combat";
 import { applyPatchToState, normalizeGameState } from "../game/engine";
 import { localDm } from "../game/localdm";
 import { parseCombatDamageResult, parseCombatHitResult } from "../game/world/helpers";
-import { initialGameState } from "../data";
+import { initialGameState, originTemplates } from "../data";
 import {
+  buildNamelessTutorialBackground,
   buildNamelessTutorialCombatIntroText,
   buildNamelessTutorialCompletionPatch,
   buildNamelessTutorialObjective,
@@ -31,14 +32,18 @@ import type {
   DrawerTab,
   GamePatch,
   GameState,
+  Item,
   MartialArt,
   Message,
+  PendingCheck,
   PendingDamage,
-  RollMode
+  RollMode,
+  SceneType
 } from "../types";
 import type { ApiTestState, RollPackage, RollingState } from "./sessionTypes";
 import {
   API_KEY,
+  applyAllocation,
   BGM_KEY,
   BGM_VOLUME_KEY,
   EMPTY_ROLL_PACKAGE,
@@ -53,6 +58,7 @@ import {
   normalizeApiConfig,
   readJson
 } from "./sessionShared";
+import { buildCharacterFromOrigin } from "./setupHelpers";
 
 type AiCallResult = {
   text: string;
@@ -135,12 +141,17 @@ function mergeCombatActionCheck(
     label: proposed?.label || fallback?.label || current.label,
     abilityKey: proposed?.abilityKey || fallback?.abilityKey || current.abilityKey,
     martialArtId: proposed?.martialArtId || fallback?.martialArtId || current.martialArtId,
+    rollMode: proposed?.rollMode || fallback?.rollMode || current.rollMode,
     dc: proposed?.dc ?? fallback?.dc ?? current.dc,
     reason: proposed?.reason || fallback?.reason || current.reason,
     risk: proposed?.risk || fallback?.risk || current.risk,
     enemyIntent: proposed?.enemyIntent || fallback?.enemyIntent || current.enemyIntent,
     suggestedAction: proposed?.suggestedAction || fallback?.suggestedAction || current.suggestedAction
   };
+}
+
+function resolvePendingRollMode(check?: PendingCheck) {
+  return check?.rollMode || "normal";
 }
 
 function isTutorialGame(state: GameState) {
@@ -155,13 +166,17 @@ function makeSingleAbilityChoice() {
   return [makeAbilityChoices()[0]];
 }
 
+function qiInvestBonus(qi: number) {
+  return Math.floor(qi / 2);
+}
+
 export function useGameSession() {
   const savedGame = readJson<GameState>(SAVE_KEY, initialGameState);
   const initialApi = readJson<ApiConfig>(API_KEY, defaultApiConfig("openai"));
 
   const [game, setGame] = useState<GameState>(() => normalizeGameState(savedGame));
   const [api, setApi] = useState<ApiConfig>(() => normalizeApiConfig(initialApi));
-  const [customName, setCustomName] = useState("鏃犲悕瀹?");
+  const [customName, setCustomName] = useState("无名客");
   const [selectedOriginId, setSelectedOriginId] = useState(PLAYABLE_ORIGIN_ID);
   const [abilityChoices, setAbilityChoices] = useState<RollPackage[]>(() => makeSingleAbilityChoice());
   const [selectedChoiceIndex, setSelectedChoiceIndex] = useState(0);
@@ -189,6 +204,7 @@ export function useGameSession() {
   const uiLockTimerRef = useRef<number | null>(null);
 
   const canContinue = Boolean(readJson<GameState>(SAVE_KEY, initialGameState).setupComplete);
+  const selectedOrigin = originTemplates.find((origin) => origin.id === selectedOriginId) || originTemplates[0];
 
   useEffect(() => {
     setAbilityChoices(makeSingleAbilityChoice());
@@ -553,7 +569,7 @@ export function useGameSession() {
         const aiResult = await callAi(
           baseGame,
           text,
-          buildCombatActionIntentPrompt(baseGame, text),
+          buildCombatActionCheckPrompt(baseGame, text),
           localCombatResolution.text
         );
         const mergedPendingCheck = mergeCombatActionCheck(
@@ -1128,6 +1144,194 @@ export function useGameSession() {
     });
   }
 
+  function startOriginGame() {
+    const baseChoice = abilityChoices[0] || ([0, 0, 0, 0, 0, 0] as RollPackage);
+    const hero = buildCharacterFromOrigin(customName, selectedOrigin, applyAllocation(baseChoice, abilityAllocation));
+
+    lockUi(1400);
+    closePanels();
+    setGame(normalizeGameState({
+      ...structuredClone(initialGameState),
+      setupComplete: true,
+      originId: selectedOrigin.id,
+      creationMode: "origin",
+      sceneType: "market",
+      currentCharacterId: hero.id,
+      character: hero,
+      roster: [hero],
+      locations: initialGameState.locations.map((location) => ({ ...location })),
+      messages: [
+        { id: "m0", role: "dm", text: buildNamelessTutorialBackground(hero.name) },
+        { id: uid("system"), role: "system", text: `${hero.name}以“${selectedOrigin.name}”的身份入局，旧事先起，正篇稍后再开。` }
+      ],
+      chapterState: {
+        id: NAMELESS_WANDERER_CHAPTER_ID,
+        stage: "tutorial_story"
+      },
+      objective: buildNamelessTutorialObjective("story"),
+      storyFlags: ["tutorial:active"],
+      systemLog: ["无名客旧事已展开，进入教学战斗后才会接回正式开场。"]
+    }));
+
+    localStorage.setItem(SETUP_KEY, "1");
+    tryPlayMusic();
+  }
+
+  function openDrawer(tab: DrawerTab = activeTab) {
+    if (uiLocked || rolling || busy) return;
+    setActiveTab(tab);
+    setDiceOpen(false);
+    setDrawerOpen(true);
+  }
+
+  function openPendingCheck() {
+    if (uiLocked || rolling || busy) return;
+    setDrawerOpen(false);
+    setRollMode(resolvePendingRollMode(game.pendingCheck));
+    setDiceOpen(true);
+  }
+
+  function toggleDice() {
+    if (uiLocked || rolling || busy) return;
+    setDrawerOpen(false);
+    if (!diceOpen) {
+      setRollMode(resolvePendingRollMode(game.pendingCheck));
+    }
+    setDiceOpen((open) => !open);
+  }
+
+  function switchScene(sceneType: SceneType) {
+    setGame((prev) => ({ ...prev, sceneType }));
+  }
+
+  function travelToLocation(name: string) {
+    closePanels();
+    void submitAction(`前往【${name}】`);
+  }
+
+  function useItem(item: Item) {
+    setGame((prev) => {
+      const next = structuredClone(prev);
+      const target = next.character.inventory.find((entry) => entry.id === item.id);
+      if (!target) return prev;
+
+      if (target.hpRestore) next.character.hp = clamp(next.character.hp + target.hpRestore, 0, next.character.maxHp);
+      if (target.qiRestore) next.character.qi = clamp(next.character.qi + target.qiRestore, 0, next.character.maxQi);
+      target.count -= 1;
+      next.character.inventory = next.character.inventory.filter((entry) => entry.count > 0);
+      next.systemLog.push(`使用：${item.name}`);
+      return next;
+    });
+  }
+
+  function rollDice(
+    label: string,
+    mod: number,
+    check?: PendingCheck,
+    options: {
+      martialArt?: MartialArt;
+      qiBonusSpend?: number;
+      sendToDm?: boolean;
+    } = {}
+  ) {
+    if (rolling || busy) return;
+
+    const sendToDm = options.sendToDm ?? Boolean(check);
+    const combatInitiativeRoll = game.combat.active && game.combat.phase === "opening";
+    const combatAttack = game.combat.active && game.combat.phase === "awaiting_hit_check";
+    const qiBonusSpend = game.combat.active ? 0 : clamp(options.qiBonusSpend ?? qiInvest, 0, game.character.qi);
+    const qiBonus = qiInvestBonus(qiBonusSpend);
+    const first = Math.ceil(Math.random() * 20);
+    const second = Math.ceil(Math.random() * 20);
+    const picked = rollMode === "advantage"
+      ? Math.max(first, second)
+      : rollMode === "disadvantage"
+        ? Math.min(first, second)
+        : first;
+    const total = picked + mod + qiBonus;
+    const isCritical = combatAttack && picked === 20;
+    const isAutoFail = Boolean(check) && picked === 1;
+    const success = check
+      ? (isAutoFail ? false : (isCritical ? true : total >= check.dc))
+      : undefined;
+    const modeText = rollMode === "advantage"
+      ? `优势（${first}/${second}）`
+      : rollMode === "disadvantage"
+        ? `劣势（${first}/${second}）`
+        : "常规";
+    const outputLines = [
+      `【判定】${label}`,
+      `模式：${modeText}`,
+      `d20=${picked}`,
+      `加值：${mod >= 0 ? "+" : ""}${mod}`,
+      ...(!game.combat.active ? [`内力：${qiBonusSpend}（判定 +${qiBonus}）`] : []),
+      check ? `总计：${total} / DC ${check.dc}` : `总计：${total}`,
+      check ? `结果：${success ? "成功" : "失败"}` : "结果：仅记录本次掷骰",
+      ...(isCritical ? ["暴击：是"] : []),
+      ...(isAutoFail ? ["大失败：d20=1"] : []),
+      ...(combatInitiativeRoll ? ["阶段：先攻"] : []),
+      ...(combatAttack ? ["阶段：攻击"] : [])
+    ];
+
+    lockUi(1400);
+    setRolling({
+      label,
+      total,
+      detail: `${modeText} · d20=${picked}${game.combat.active ? "" : ` · 内力 +${qiBonus}`}`
+    });
+    setQiInvest(0);
+    closePanels();
+
+    window.setTimeout(() => {
+      setRollMode("normal");
+      setRolling(null);
+      closePanels();
+
+      if (sendToDm) {
+        if (check && success && options.martialArt && combatAttack) {
+          void queuePendingDamage(outputLines.join("\n"), options.martialArt, qiBonusSpend, isCritical);
+          return;
+        }
+        void submitDiceResult(outputLines.join("\n"), qiBonusSpend);
+        return;
+      }
+
+      setGame((prev) => ({
+        ...prev,
+        character: {
+          ...prev.character,
+          qi: clamp(prev.character.qi - qiBonusSpend, 0, prev.character.maxQi)
+        },
+        messages: [...prev.messages, { id: uid("dice"), role: "dice", text: outputLines.join("\n") }]
+      }));
+    }, 1180);
+  }
+
+  function rollDamageDice(pendingDamage: PendingDamage) {
+    if (rolling || busy) return;
+
+    const actualDamageDice = pendingDamage.isCritical ? doubleDamageDice(pendingDamage.damageDice) : pendingDamage.damageDice;
+    const { rolls, total } = parseDamageDice(actualDamageDice);
+    const bonus = pendingDamage.damageBonus || 0;
+    const final = total + bonus;
+    const damageText = `【伤害】${pendingDamage.label} ${actualDamageDice} => [${rolls.join(" + ")}]${bonus ? ` + ${bonus}` : ""} = ${final}${pendingDamage.isCritical ? "\n暴击：是" : ""}`;
+
+    lockUi(1400);
+    setRolling({
+      label: `${pendingDamage.label}伤害`,
+      total: final,
+      detail: `${actualDamageDice} = ${rolls.join(" + ")}${bonus ? ` + ${bonus}` : ""}`
+    });
+    closePanels();
+
+    window.setTimeout(() => {
+      setRollMode("normal");
+      setRolling(null);
+      closePanels();
+      void submitDamageResult(damageText, pendingDamage);
+    }, 1180);
+  }
+
   return {
     game,
     setGame,
@@ -1190,6 +1394,16 @@ export function useGameSession() {
     resetGame,
     beginTutorialCombat,
     skipTutorial,
+    selectedOrigin,
+    startOriginGame,
+    openDrawer,
+    openPendingCheck,
+    toggleDice,
+    switchScene,
+    travelToLocation,
+    useItem,
+    rollDice,
+    rollDamageDice,
     submitAction,
     submitDiceResult,
     submitDamageResult,

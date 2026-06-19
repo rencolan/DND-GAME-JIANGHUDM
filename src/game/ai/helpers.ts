@@ -5,6 +5,7 @@ import type {
   GameState,
   Npc,
   PendingCheck,
+  RollMode,
   SceneType
 } from "../../types";
 
@@ -36,6 +37,10 @@ function mergeUniqueStrings(...groups: Array<string[] | undefined>) {
   return [...new Set(groups.flat().filter(Boolean) as string[])];
 }
 
+function normalizeRollMode(raw: unknown): RollMode | undefined {
+  return raw === "advantage" || raw === "disadvantage" || raw === "normal" ? raw : undefined;
+}
+
 function makePendingCheck(raw: GamePatch["pendingCheck"]): PendingCheck | undefined {
   if (!raw?.label || typeof raw.dc !== "number") return undefined;
   return {
@@ -43,6 +48,7 @@ function makePendingCheck(raw: GamePatch["pendingCheck"]): PendingCheck | undefi
     label: raw.label,
     abilityKey: raw.abilityKey,
     martialArtId: raw.martialArtId,
+    rollMode: normalizeRollMode(raw.rollMode),
     dc: raw.dc,
     reason: raw.reason || "The situation demands a clear response.",
     risk: raw.risk,

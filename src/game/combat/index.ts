@@ -66,6 +66,23 @@ function parseDice(damageDice: string) {
   };
 }
 
+export function parseDamageDice(damageDice: string) {
+  const { count, sides } = parseDice(damageDice);
+  if (!count || !sides) return { rolls: [0], total: 0 };
+
+  const rolls = Array.from({ length: count }, () => rollD20Clamped(sides));
+  return {
+    rolls,
+    total: rolls.reduce((sum, value) => sum + value, 0)
+  };
+}
+
+export function doubleDamageDice(damageDice: string) {
+  const { count, sides } = parseDice(damageDice);
+  if (!count || !sides) return damageDice;
+  return `${count * 2}d${sides}`;
+}
+
 function rollDamageTotal(damageDice: string, critical = false) {
   const { count, sides } = parseDice(damageDice);
   if (!count || !sides) return { rolls: [0], total: 0 };

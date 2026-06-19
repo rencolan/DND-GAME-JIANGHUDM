@@ -190,6 +190,7 @@ export function buildCombatActionCheck(
       pendingCheck: {
         ...state.pendingCheck,
         abilityKey: "dex",
+        rollMode: "normal",
         reason: `${state.combat.enemy || "对手"}已经起势。这一下比的不是花巧，而是谁先抢到先手。`,
         suggestedAction: `请掷 d20 + ${label}，先定这一轮谁先动。`
       },
@@ -212,6 +213,7 @@ export function buildCombatActionCheck(
       label: `攻击 ${enemyName}`,
       abilityKey: inferredAbilityKey,
       martialArtId: inferredArt?.id,
+      rollMode: "normal",
       reason: `你这一手是要正面对${enemyName}递招，眼下先按${label}做攻击判定；若命中，再掷伤害。`,
       suggestedAction: `请掷 d20 + ${label}。`
     },

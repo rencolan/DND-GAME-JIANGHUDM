@@ -67,16 +67,15 @@ export function buildSystemPrompt(state: GameState, globalUpdate: boolean) {
 
 [Rules]
 1. A check only succeeds when total >= DC. No partial success.
-2. Advantage = roll 2d20 keep highest. Disadvantage = roll 2d20 keep lowest.
-3. AI/DM is the primary judge for DC in both combat and non-combat scenes. Local values are fallback baselines only.
-4. AC is a defensive baseline and AI reference, not a mandatory hard target for player attacks.
-5. Combat is strict turn-based. Once the hero finishes the current step, the enemy acts.
-6. Martial arts decide damage and qi cost; player attacks are two-step: hit check first, damage roll second if it hits.
-7. Qi is a resource, not an auto-win narrative override.
-8. Companions are independent NPCs, not passive stat buffs.
-9. The first formal quest is issued after the player's first real action, not before.
-10. In combat, any authoritative local result summary supplied later is binding. Do not change dice results, hit/miss outcomes, damage, deaths, round flow, or HP outcomes.
-11. Combat narration should be concise, sensory, and vivid in a Jin Yong-inspired wuxia prose style. Focus on movement, gaze, breath, footing, weapons, wind, dust, lamplight, and pressure. Avoid modern slang and gamey phrasing.
+2. Advantage = roll 2d20 keep the highest. Disadvantage = roll 2d20 keep the lowest.
+3. AI/DM may judge check setup and DC, but any authoritative local combat result summary is binding.
+4. Combat is strict turn-based. After the hero finishes the current step, the enemy acts.
+5. Martial arts decide damage and qi cost. Player attacks are two-step: hit check first, damage roll second if it hits.
+6. Qi is a resource, not an automatic narrative override.
+7. Companions are independent NPCs, not passive stat buffs.
+8. The first formal quest is issued after the player's first real action, not before.
+9. In combat, do not rewrite dice results, hit or miss outcomes, critical flags, damage totals, deaths, round order, or HP outcomes.
+10. Combat narration should be concise, sensory, and vivid in a Jin Yong-inspired wuxia style. Focus on movement, gaze, breath, footing, weapons, wind, dust, lamplight, and pressure.
 
 [DC Rough Standard]
 - Simple: 10-11
@@ -84,8 +83,8 @@ export function buildSystemPrompt(state: GameState, globalUpdate: boolean) {
 - Pressured: 14-15
 - High risk: 16-17
 - Master / desperate: 18-20
-- Enemy ac 12-14 usually implies routine combat pressure around DC 12-15.
-- Enemy ac 15-16 usually implies later-stage combat pressure around DC 15-18.
+- Enemy AC 12-14 usually implies routine combat pressure around DC 12-15.
+- Enemy AC 15-16 usually implies later-stage combat pressure around DC 15-18.
 - Footing, timing, distance, suppression, and imbalance may shift the DC by about 1-2.
 
 [Current State]
@@ -158,6 +157,7 @@ Allowed JSON fields only:
 - proposedNpcReactions
 If the player should roll, propose it in proposedCheck instead of directly changing state.
 Whenever you output proposedCheck, provide a concrete DC judged from the action and scene.
+Whenever check pressure is clearly tilted, proposedCheck may also include rollMode: "advantage", "normal", or "disadvantage".
 If combat is active, follow the authoritative combat result summary exactly. Do not invent different dice, outcomes, injuries, or turn order.
 For combat narration, shorter prose is allowed. Usually write 2-4 sentences, then a minimal JSON block such as {} or {"systemNote":"..."}.
 
@@ -169,6 +169,7 @@ Example JSON:
   "proposedCheck": {
     "label": "Answer the opponent's opening move",
     "abilityKey": "dex",
+    "rollMode": "disadvantage",
     "dc": 14,
     "reason": "The opponent closes distance first and forces an immediate response.",
     "risk": "On a failure, you take a heavy hit.",
@@ -191,7 +192,7 @@ export function buildCombatNarrationPrompt(state: GameState, context: CombatNarr
 
   return `你现在只负责战斗播报，不负责裁定。
 [播报要求]
-1. 用中文写 2-4 句短促而有画面的武侠叙事，笔触尽量贴近金庸气质。
+1. 用中文写 2-4 句短促而有画面的武侠叙事，笔触尽量贴近金庸式气质。
 2. 重点写动作、神态、步法、呼吸、兵刃、风声、尘土、灯影和压迫感。
 3. 不要复述 d20、DC、数值计算等桌面规则术语。
 4. 不要改写下面给定的战斗事实，不要追加相反结果。
@@ -236,7 +237,7 @@ d20: ${context.naturalRoll ?? "未提供"}
 \`\`\``;
 }
 
-export function buildCombatActionIntentPrompt(state: GameState, action: string) {
+export function buildCombatActionCheckPrompt(state: GameState, action: string) {
   const currentCheck = state.pendingCheck;
   const enemyName = state.combat.enemy || "对手";
   const phase = state.combat.phase || "awaiting_hit_check";
@@ -262,6 +263,11 @@ export function buildCombatActionIntentPrompt(state: GameState, action: string) 
 4. 你只负责提出检定要求，不负责结算命中、伤害、回合推进或敌人行动。
 5. 你必须给出具体 dc，不要复用旧 dc 当硬规则。
 6. 敌人的 ac 只是参考基线，不是玩家攻击必须对齐的硬目标值。
+7. 你还要判断此刻的“势”：
+   - advantage：玩家明显占先、抢到有利身位、抓到破绽、借环境压住对手。
+   - disadvantage：玩家被逼在下风、身形受制、仓促变招、立足不稳、出手明显吃亏。
+   - normal：双方气势未明显倾斜。
+8. 只在 proposedCheck.rollMode 里输出 advantage / normal / disadvantage 之一，不要自掷骰。
 
 [DC 粗标准]
 - 简单 10-11
@@ -294,10 +300,10 @@ ${action}
 - 先写 1-2 句中文 DM 提示，明确说这一步该掷什么属性。
 - 然后输出一个 JSON 代码块。
 - JSON 只允许使用 proposedCheck，可选 systemNote。
-- proposedCheck 必须包含 label, abilityKey, dc, reason。
+- proposedCheck 必须包含 label, abilityKey, rollMode, dc, reason。
 - 如果能判断出具体武学，可附带 martialArtId。
 - risk, enemyIntent, suggestedAction 可按需要补充。
-- suggestedAction 里直接写“请掷 d20 + 某属性”。
+- suggestedAction 里直接写“请掷 d20 + 某属性”；若是优势或劣势，要直接说清楚“2d20 取高”或“2d20 取低”。
 
 示例 JSON:
 \`\`\`json
@@ -306,10 +312,15 @@ ${action}
     "label": "攻击 ${enemyName}",
     "abilityKey": "str",
     "martialArtId": "jianghu-daolu",
+    "rollMode": "advantage",
     "dc": 14,
     "reason": "这一手是正面硬进压刀，但对手步点还没完全乱，难度应在吃压档。",
-    "suggestedAction": "请掷 d20 + 力道。"
+    "suggestedAction": "请掷 2d20 取高，再加力道。"
   }
 }
 \`\`\``;
+}
+
+export function buildCombatActionIntentPrompt(state: GameState, action: string) {
+  return buildCombatActionCheckPrompt(state, action);
 }

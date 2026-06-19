@@ -16,6 +16,7 @@ import type {
   Quest,
   QuestStateNode,
   RelationshipRouteState,
+  RollMode,
   Rumor
 } from "../../types";
 
@@ -50,6 +51,10 @@ function currentLocation(state: GameState) {
 
 function mergeUniqueStrings(...groups: Array<string[] | undefined>) {
   return [...new Set(groups.flat().filter(Boolean) as string[])];
+}
+
+function normalizeRollMode(raw: unknown): RollMode | undefined {
+  return raw === "advantage" || raw === "disadvantage" || raw === "normal" ? raw : undefined;
 }
 
 function normalizeStoryFlags(raw: string[] | undefined, fallback: string[] = []) {
@@ -236,6 +241,7 @@ function makePendingCheck(raw: GamePatch["pendingCheck"]): PendingCheck | undefi
     label: raw.label,
     abilityKey: raw.abilityKey,
     martialArtId: raw.martialArtId,
+    rollMode: normalizeRollMode(raw.rollMode),
     dc: raw.dc,
     reason: raw.reason || "局势逼人，得给出一个清楚应对。",
     risk: raw.risk,
