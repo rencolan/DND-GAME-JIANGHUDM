@@ -122,8 +122,16 @@ export function inferSceneType(text: string): SceneType | undefined {
 
 export function stripJsonBlock(text: string) {
   const match = text.match(/```json\s*([\s\S]*?)\s*```/i);
+  if (!match) {
+    const incompleteFenceIndex = text.search(/```json\b/i);
+    return {
+      visibleText: (incompleteFenceIndex >= 0 ? text.slice(0, incompleteFenceIndex) : text).trim(),
+      patchText: undefined
+    };
+  }
+
   return {
-    visibleText: match ? text.replace(match[0], "").trim() : text.trim(),
+    visibleText: text.replace(match[0], "").trim(),
     patchText: match?.[1]
   };
 }

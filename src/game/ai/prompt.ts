@@ -146,7 +146,8 @@ ${JSON.stringify(enemyPresets.map((preset) => ({
   })), null, 2)}
 
 [Output Contract]
-Write 120-220 words of narrative first, then one JSON code block.
+Write 70-140 words of narrative first, then one JSON code block.
+Keep the prose economical. Do not restate the player's input, current objective, or visible state unless it materially changes the scene.
 The AI must not directly apply hard state changes such as quest completion, map unlocks, NPC joins/leaves, resource deltas, chapter jumps, or combat victory.
 Allowed JSON fields only:
 - systemNote
@@ -159,7 +160,7 @@ If the player should roll, propose it in proposedCheck instead of directly chang
 Whenever you output proposedCheck, provide a concrete DC judged from the action and scene.
 Whenever check pressure is clearly tilted, proposedCheck may also include rollMode: "advantage", "normal", or "disadvantage".
 If combat is active, follow the authoritative combat result summary exactly. Do not invent different dice, outcomes, injuries, or turn order.
-For combat narration, shorter prose is allowed. Usually write 2-4 sentences, then a minimal JSON block such as {} or {"systemNote":"..."}.
+For combat narration, shorter prose is allowed. Usually write 1-3 sentences, then a minimal JSON block such as {} or {"systemNote":"..."}.
 
 Example JSON:
 \`\`\`json

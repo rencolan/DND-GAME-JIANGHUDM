@@ -651,7 +651,7 @@ export function useGameSession() {
   async function queuePendingDamage(hitText: string, art: MartialArt, qiBonusSpend: number, isCritical = false) {
     if (busy) return;
 
-    const tutorialMode = isTutorialGame(game);
+    const tutorialMode = isTutorialCombatGame(game);
     const pendingDamagePatch = prepareCombatDamageRoll(art, hitText, qiBonusSpend, isCritical, game.character);
     const stagedPatch = tutorialMode
       ? {
@@ -678,14 +678,11 @@ export function useGameSession() {
       ...stagedState,
       messages: [
         ...stagedState.messages,
-        ...(tutorialMode
-          ? [{ id: uid("dm"), role: "dm" as const, text: `这一招已经打中了。下一步别急着说别的，先掷 ${art.name} 的伤害骰，把这一下真正打实。` }]
-          : []),
         systemMessage
       ]
     });
 
-    if (tutorialMode || !stagedState.pendingDamage) return;
+    if (!stagedState.pendingDamage) return;
 
     setBusy(true);
     try {

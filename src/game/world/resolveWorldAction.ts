@@ -11,7 +11,6 @@ import type { EnemyTurnResult } from "../combat";
 import { advanceWorldLocally, mergeGamePatches } from "../engine";
 import {
   buildNamelessTutorialObjective,
-  buildNamelessTutorialTransitionText,
   isNamelessTutorialCombatStage,
   QUEST_WANDERER_1,
   QUEST_WANDERER_2,
@@ -209,14 +208,6 @@ function isAmbushAction(action: string) {
 function findMartialArtFromHitLabel(state: GameState, label?: string): MartialArt | undefined {
   if (!label) return undefined;
   return state.character.martialArts.find((art) => label.includes(art.name));
-}
-
-function buildTutorialPromptText(state: GameState) {
-  if (!isNamelessTutorialCombatStage(state) || !state.combat.active) return undefined;
-  if (state.pendingDamage) return "这一手已经打中了。先点开“待伤害”，把这招真正的伤害骰掷出来。";
-  if (state.combat.phase === "opening") return "眼下先别忙着叙述，先点开“待先攻”，掷出身法结果，看看这一轮谁先动。";
-  if (state.combat.phase === "awaiting_hit_check") return "这一轮该你回手了。先点开“待攻击”，选一门武学掷攻击，命中以后再掷伤害。";
-  return "先照着界面上的待判定一步步来，把这一场小斗打完再说。";
 }
 
 function maybeStartMainlineChecks(state: GameState, action: string, globalUpdate: boolean, firstActionPatch?: GamePatch): WorldResolution | undefined {
@@ -424,19 +415,18 @@ export function resolveWorldAction(action: string, state: GameState, globalUpdat
         ? resolveNamelessStoryTrigger(state, { kind: "combat_win", enemyName: state.combat.enemy })
         : undefined;
       return {
-        textId: tutorialStage ? "default_scene" : "combat_damage_end",
+        textId: "combat_damage_end",
         patch: withWorldPatch(state, globalUpdate, playerPatch, storyPatch),
-        meta: { enemyName: state.combat.enemy, locationName: currentLocationName(state) },
-        textOverride: tutorialStage ? buildNamelessTutorialTransitionText("won") : undefined
+        meta: { enemyName: state.combat.enemy, locationName: currentLocationName(state) }
       };
     }
 
     const enemyTurn = resolveEnemyTurn(state);
-      return {
-        textId: tutorialStage ? "default_scene" : "combat_damage_continue",
-        patch: withWorldPatch(
-          state,
-          globalUpdate,
+    return {
+      textId: "combat_damage_continue",
+      patch: withWorldPatch(
+        state,
+        globalUpdate,
         playerPatch,
         enemyTurn.patch,
         tutorialStage ? { objectiveUpdate: buildNamelessTutorialObjective("repeat") } : undefined
@@ -449,34 +439,28 @@ export function resolveWorldAction(action: string, state: GameState, globalUpdat
         combatFlow: {
           playerPatch,
           enemyTurn
-        },
-        textOverride: tutorialStage
-          ? `这一击已经落了实，可对方还没倒。别急着乱，等他这一轮回过手，你仍照旧先选武学、再掷攻击，命中后再掷伤害。`
-          : undefined
-      };
-    }
+        }
+    };
+  }
 
   if (state.combat.active && !Number.isNaN(hit.total) && !Number.isNaN(hit.dc) && state.combat.phase === "opening") {
     const initiativePatch = resolveCombatInitiative(state, hit);
     if (hit.success) {
       return {
-        textId: tutorialStage ? "default_scene" : "combat_initiative_win",
+        textId: "combat_initiative_win",
         patch: withWorldPatch(
           state,
           globalUpdate,
           initiativePatch,
           tutorialStage ? { objectiveUpdate: buildNamelessTutorialObjective("attack") } : undefined
         ),
-        meta: { enemyName: state.combat.enemy, locationName: currentLocationName(state) },
-        textOverride: tutorialStage
-          ? "先手在你手里。看清楚了：战斗不是一口气掷完，接下来要先选一门武学掷攻击。命中之后，才轮到掷伤害。"
-          : undefined
+        meta: { enemyName: state.combat.enemy, locationName: currentLocationName(state) }
       };
     }
 
     const enemyTurn = resolveEnemyTurn(state, false);
     return {
-      textId: tutorialStage ? "default_scene" : "combat_initiative_lose",
+      textId: "combat_initiative_lose",
       patch: withWorldPatch(
         state,
         globalUpdate,
@@ -492,10 +476,7 @@ export function resolveWorldAction(action: string, state: GameState, globalUpdat
       combatFlow: {
         playerPatch: initiativePatch,
         enemyTurn
-      },
-      textOverride: tutorialStage
-        ? "这一轮先手被对方抢去了，也不要慌。等他这一手过去，立刻轮到你回手：先选武学掷攻击，中了再掷伤害。"
-        : undefined
+      }
     };
   }
 
@@ -503,7 +484,7 @@ export function resolveWorldAction(action: string, state: GameState, globalUpdat
     const matchedArt = findMartialArtFromHitLabel(state, hit.label);
     if (hit.success && matchedArt) {
       return {
-        textId: tutorialStage ? "default_scene" : "combat_hit_success",
+        textId: "combat_hit_success",
         patch: withWorldPatch(
           state,
           globalUpdate,
@@ -513,17 +494,14 @@ export function resolveWorldAction(action: string, state: GameState, globalUpdat
             systemNote: hit.isCritical ? `${matchedArt.name}打出了暴击。` : `${matchedArt.name}这一招命中了。`
           }
         ),
-        meta: { enemyName: state.combat.enemy, locationName: currentLocationName(state) },
-        textOverride: tutorialStage
-          ? `这一招已经打中了。记住，命中还不算完，下一步要掷 ${matchedArt.name} 的伤害骰，把这一击真正落到实处。`
-          : undefined
+        meta: { enemyName: state.combat.enemy, locationName: currentLocationName(state) }
       };
     }
 
     const attackPatch = resolveCombatHit(state, hit);
     const enemyTurn = resolveEnemyTurn(state);
     return {
-      textId: tutorialStage ? "default_scene" : hit.success ? "combat_hit_success" : "combat_hit_fail",
+      textId: hit.success ? "combat_hit_success" : "combat_hit_fail",
       patch: withWorldPatch(
         state,
         globalUpdate,
@@ -539,10 +517,7 @@ export function resolveWorldAction(action: string, state: GameState, globalUpdat
       combatFlow: {
         playerPatch: attackPatch,
         enemyTurn
-      },
-      textOverride: tutorialStage
-        ? "这一击没有打实。战斗里失手原也寻常，先稳住，等这一轮过去，再照旧选武学掷攻击，命中后再掷伤害。"
-        : undefined
+      }
     };
   }
 
@@ -550,28 +525,10 @@ export function resolveWorldAction(action: string, state: GameState, globalUpdat
     return resolvePendingStoryCheck(state, globalUpdate, hit.success);
   }
 
-  if (tutorialStage && state.combat.active && state.pendingCheck && Number.isNaN(hit.total) && Number.isNaN(damage.total)) {
-    return {
-      textId: "default_scene",
-      patch: withWorldPatch(state, globalUpdate),
-      meta: { locationName: currentLocationName(state) },
-      textOverride: buildTutorialPromptText(state)
-    };
-  }
-
   const mainline = namelessStory
     ? maybeStartMainlineChecks(state, action, globalUpdate, firstActionPatch)
     : undefined;
   if (mainline) return mainline;
-
-  if (tutorialStage && state.combat.active) {
-    return {
-      textId: "default_scene",
-      patch: withWorldPatch(state, globalUpdate),
-      meta: { locationName: currentLocationName(state) },
-      textOverride: buildTutorialPromptText(state)
-    };
-  }
 
   const martialArtStory = resolveMartialArtStoryAction(state, action);
   if (martialArtStory) {
