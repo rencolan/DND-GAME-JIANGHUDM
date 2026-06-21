@@ -43,6 +43,29 @@ function firstEnemyArt(state: GameState) {
   return (state.combat.enemyMartialArts || [])[0];
 }
 
+function availableEnemyArts(state: GameState) {
+  const enemyQi = state.combat.enemyQi || 0;
+  return (state.combat.enemyMartialArts || []).filter((art) =>
+    art.category !== "internal" || enemyQi >= (art.baseQiCost || 0)
+  );
+}
+
+function chooseEnemyArt(state: GameState) {
+  const usableArts = availableEnemyArts(state);
+  if (usableArts.length > 0) {
+    return usableArts[Math.floor(Math.random() * usableArts.length)];
+  }
+
+  const fallbackExternal = (state.combat.enemyMartialArts || []).find((art) => art.category === "external");
+  return fallbackExternal || firstEnemyArt(state);
+}
+
+function hasBlockedInternalArts(state: GameState) {
+  const allArts = state.combat.enemyMartialArts || [];
+  return allArts.some((art) => art.category === "internal")
+    && availableEnemyArts(state).every((art) => art.category !== "internal");
+}
+
 export function inferCombatStakes(enemyName: string) {
   return `先稳住 ${enemyName}，别让局势继续被对方推着走。`;
 }
@@ -156,9 +179,8 @@ export type EnemyTurnResult = {
 
 export function resolveEnemyTurn(state: GameState, advanceRound = true): EnemyTurnResult {
   const enemyName = state.combat.enemy || DEFAULT_ENEMY_NAME;
-  const enemyArtPool = state.combat.enemyMartialArts || [];
-  const enemyArt = enemyArtPool[Math.floor(Math.random() * Math.max(1, enemyArtPool.length))] || firstEnemyArt(state);
-  const actionLabel = enemyArt?.name || "一记快手";
+  const enemyArt = chooseEnemyArt(state);
+  const actionLabel = enemyArt?.name || "普通一击";
   const attackAbility = enemyArt?.linkedAbility || "dex";
   const enemyAttackMod = findAbilityModifier(state.combat.enemyAbilities, attackAbility);
   const heroAc = state.character.ac || 10;
@@ -176,7 +198,10 @@ export function resolveEnemyTurn(state: GameState, advanceRound = true): EnemyTu
   const nextPhase = heroAfter > 0 ? "awaiting_hit_check" : "ended";
   const summary = hit
     ? `${enemyName}使出${actionLabel}，打中了你${totalDamage}点${isCritical ? "（暴击）" : ""}。`
-    : `${enemyName}使出${actionLabel}，却没能打实。`;
+    : `${enemyName}使出${actionLabel}，却没能真正打实。`;
+  const systemNote = hasBlockedInternalArts(state)
+    ? `${enemyName}内力一时续不上来，只能改用不耗气的招式。${summary}`
+    : summary;
 
   return {
     summary,
@@ -207,7 +232,7 @@ export function resolveEnemyTurn(state: GameState, advanceRound = true): EnemyTu
         stakes: inferCombatStakes(enemyName)
       },
       combatAction: heroAfter <= 0 ? "exit" : "none",
-      systemNote: summary
+      systemNote
     }
   };
 }
@@ -215,10 +240,10 @@ export function resolveEnemyTurn(state: GameState, advanceRound = true): EnemyTu
 export function getNextEnemyPendingCheck(state: GameState): GamePatch["pendingCheck"] | undefined {
   if (!state.combat.active) return undefined;
 
-  const martialArts = state.combat.enemyMartialArts || [];
-  const nextArt = martialArts[Math.floor(Math.random() * Math.max(1, martialArts.length))];
+  const nextArt = chooseEnemyArt(state);
   const linkedAbility = nextArt?.linkedAbility || "dex";
   const enemyName = state.combat.enemy || DEFAULT_ENEMY_NAME;
+  const internalBlocked = hasBlockedInternalArts(state);
 
   return {
     label: `应对 ${enemyName} 的下一手`,
@@ -226,13 +251,17 @@ export function getNextEnemyPendingCheck(state: GameState): GamePatch["pendingCh
     martialArtId: nextArt?.id,
     dc: clamp((state.combat.enemyAc || 12) + 2, 11, 18),
     reason: nextArt
-      ? `${enemyName}正借${nextArt.name}继续往前压。`
+      ? internalBlocked
+        ? `${enemyName}内力接续不上，眼下更可能改用${nextArt.name}这样的不耗气招式逼上来。`
+        : `${enemyName}正要以${nextArt.name}继续往前压。`
       : `${enemyName}正试图重新把先手抢回去。`,
-    risk: "若失败，你会受伤或失位。",
+    risk: "若失手，你会受伤或失位。",
     enemyIntent: nextArt
-      ? `${enemyName}想借${nextArt.name}把你逼乱。`
+      ? internalBlocked
+        ? `${enemyName}想先稳住气息，再用外功把压力续上。`
+        : `${enemyName}想借${nextArt.name}把你逼乱。`
       : `${enemyName}想把压力一直续下去。`,
-    suggestedAction: "你可以硬接、闪躲、反击，或先拆掉对方的节奏。"
+    suggestedAction: "你可以硬接、闪身、反击，或先拆掉对方的节奏。"
   };
 }
 

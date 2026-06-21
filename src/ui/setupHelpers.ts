@@ -17,6 +17,7 @@ export function buildCharacterFromOrigin(name: string, origin: OriginTemplate, p
     qi: maxQi,
     maxQi,
     ac: calculateAcFromDex(packageValues[1]),
+    silver: 0,
     abilities: [
       { key: "str", label: abilityLabels.str, value: packageValues[0] },
       { key: "dex", label: abilityLabels.dex, value: packageValues[1] },
@@ -33,6 +34,7 @@ export function buildCharacterFromOrigin(name: string, origin: OriginTemplate, p
         desc: "恢复 8 点生命。",
         count: 2,
         type: "consumable",
+        value: 0,
         usable: true,
         hpRestore: 8
       },
@@ -42,6 +44,7 @@ export function buildCharacterFromOrigin(name: string, origin: OriginTemplate, p
         desc: "恢复 2 点内力。",
         count: 1,
         type: "consumable",
+        value: 0,
         usable: true,
         qiRestore: 2
       },

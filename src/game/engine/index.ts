@@ -21,6 +21,7 @@ export function mergeGamePatches(...patches: Array<GamePatch | undefined>): Game
     if (patch.qiRecovery !== undefined) merged.qiRecovery = (merged.qiRecovery || 0) + patch.qiRecovery;
     if (patch.innerInjuryChange !== undefined) merged.innerInjuryChange = (merged.innerInjuryChange || 0) + patch.innerInjuryChange;
     if (patch.acChange !== undefined) merged.acChange = (merged.acChange || 0) + patch.acChange;
+    if (patch.silverChange !== undefined) merged.silverChange = (merged.silverChange || 0) + patch.silverChange;
     if (patch.abilityChanges) merged.abilityChanges = { ...(merged.abilityChanges || {}), ...patch.abilityChanges };
     if (patch.location !== undefined) merged.location = patch.location;
     if (patch.timeSlot !== undefined) merged.timeSlot = patch.timeSlot;
@@ -30,6 +31,28 @@ export function mergeGamePatches(...patches: Array<GamePatch | undefined>): Game
     if (patch.combatUpdate) merged.combatUpdate = { ...(merged.combatUpdate || {}), ...patch.combatUpdate };
     if (patch.newItem !== undefined) merged.newItem = patch.newItem;
     if (patch.removeItemId !== undefined) merged.removeItemId = patch.removeItemId;
+    if (patch.itemChanges) merged.itemChanges = [...(merged.itemChanges || []), ...patch.itemChanges];
+    if (patch.economyUpdate) {
+      merged.economyUpdate = {
+        ...(merged.economyUpdate || {}),
+        ...(patch.economyUpdate || {}),
+        merchantStocks: {
+          ...(merged.economyUpdate?.merchantStocks || {}),
+          ...(patch.economyUpdate.merchantStocks || {})
+        },
+        merchantBlockedUntilDay: {
+          ...(merged.economyUpdate?.merchantBlockedUntilDay || {}),
+          ...(patch.economyUpdate.merchantBlockedUntilDay || {})
+        },
+        stolenNpcState: {
+          ...(merged.economyUpdate?.stolenNpcState || {}),
+          ...(patch.economyUpdate.stolenNpcState || {})
+        },
+        pendingAction: "pendingAction" in patch.economyUpdate
+          ? patch.economyUpdate.pendingAction
+          : merged.economyUpdate?.pendingAction
+      };
+    }
     if (patch.relationshipChanges) merged.relationshipChanges = [...(merged.relationshipChanges || []), ...patch.relationshipChanges];
     if (patch.npcUpdates) merged.npcUpdates = [...(merged.npcUpdates || []), ...patch.npcUpdates];
     if (patch.questUpdates) merged.questUpdates = [...(merged.questUpdates || []), ...patch.questUpdates];

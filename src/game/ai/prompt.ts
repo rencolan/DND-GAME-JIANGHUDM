@@ -76,6 +76,8 @@ export function buildSystemPrompt(state: GameState, globalUpdate: boolean) {
 8. The first formal quest is issued after the player's first real action, not before.
 9. In combat, do not rewrite dice results, hit or miss outcomes, critical flags, damage totals, deaths, round order, or HP outcomes.
 10. Combat narration should be concise, sensory, and vivid in a Jin Yong-inspired wuxia style. Focus on movement, gaze, breath, footing, weapons, wind, dust, lamplight, and pressure.
+11. Never output chain-of-thought, reasoning traces, self-analysis, or any <think>...</think> content. Output only the player-facing narration and the final JSON block.
+12. For shops and theft, AI may infer the player's intent and suggest a structured world action, but all money, inventory, relationship, DC, and consequence changes remain locally authoritative.
 
 [DC Rough Standard]
 - Simple: 10-11
@@ -153,12 +155,14 @@ Allowed JSON fields only:
 - systemNote
 - sceneType
 - proposedCheck
+- proposedWorldAction
 - proposedHooks
 - proposedRumors
 - proposedNpcReactions
 If the player should roll, propose it in proposedCheck instead of directly changing state.
 Whenever you output proposedCheck, provide a concrete DC judged from the action and scene.
 Whenever check pressure is clearly tilted, proposedCheck may also include rollMode: "advantage", "normal", or "disadvantage".
+Whenever the player is clearly trying to buy, sell, browse goods, or steal, use proposedWorldAction to identify the intent, target, item, quantity, and any suggested ability/DC/rollMode. Do not directly award or remove money or items.
 If combat is active, follow the authoritative combat result summary exactly. Do not invent different dice, outcomes, injuries, or turn order.
 For combat narration, shorter prose is allowed. Usually write 1-3 sentences, then a minimal JSON block such as {} or {"systemNote":"..."}.
 

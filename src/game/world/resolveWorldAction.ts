@@ -20,7 +20,8 @@ import {
   resolveNamelessStoryTrigger
 } from "../story/namelessWanderer";
 import { resolveMartialArtStoryAction } from "../story/martialArtRoutes";
-import type { GamePatch, GameState, MartialArt } from "../../types";
+import type { GamePatch, GameState, MartialArt, ProposedWorldAction } from "../../types";
+import { resolveEconomyCheckResult, tryResolveEconomyAction } from "./economySystem";
 import {
   buildCombatActionCheck,
   buildShuangErSupportPatch,
@@ -67,6 +68,16 @@ export type WorldTextId =
   | "combat_named_start"
   | "combat_generic_start"
   | "suggested_check"
+  | "economy_no_merchant"
+  | "economy_merchant_blocked"
+  | "economy_shop_list"
+  | "economy_buy_success"
+  | "economy_buy_fail"
+  | "economy_sell_success"
+  | "economy_sell_fail"
+  | "economy_steal_prompt"
+  | "economy_steal_success"
+  | "economy_steal_fail"
   | "first_action"
   | "default_scene";
 
@@ -382,7 +393,12 @@ function maybeEnterGenericCombat(state: GameState, action: string, globalUpdate:
   };
 }
 
-export function resolveWorldAction(action: string, state: GameState, globalUpdate: boolean): WorldResolution {
+export function resolveWorldAction(
+  action: string,
+  state: GameState,
+  globalUpdate: boolean,
+  proposedWorldAction?: ProposedWorldAction
+): WorldResolution {
   const hit = parseCombatHitResult(action);
   const damage = parseCombatDamageResult(action);
   const namelessStory = usesNamelessStory(state);
@@ -522,7 +538,26 @@ export function resolveWorldAction(action: string, state: GameState, globalUpdat
   }
 
   if (state.pendingCheck && !state.combat.active && !Number.isNaN(hit.total) && !Number.isNaN(hit.dc)) {
+    const economyCheck = resolveEconomyCheckResult(state, globalUpdate, hit.success);
+    if (economyCheck) {
+      return {
+        ...economyCheck,
+        patch: withWorldPatch(state, globalUpdate, economyCheck.patch)
+      };
+    }
     return resolvePendingStoryCheck(state, globalUpdate, hit.success);
+  }
+
+  const economyAction = tryResolveEconomyAction(action, state, globalUpdate, proposedWorldAction);
+  if (economyAction) {
+    return {
+      ...economyAction,
+      meta: {
+        ...economyAction.meta,
+        locationName: currentLocationName(state)
+      },
+      patch: withWorldPatch(state, globalUpdate, firstActionPatch, economyAction.patch)
+    };
   }
 
   const mainline = namelessStory

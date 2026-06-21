@@ -1,4 +1,4 @@
-import { enemyPresets, initialGameState, martialArtCatalog, originTemplates } from "../../data";
+import { enemyPresets, initialGameState, itemCatalog, martialArtCatalog, originTemplates } from "../../data";
 import { normalizeChapterStateForNameless } from "../story/namelessWanderer";
 import { abilityModifier, recalculateCharacterDerivedStats } from "../rules";
 import type {
@@ -35,6 +35,12 @@ const martialLookup = new Map<string, MartialArt>();
 martialArtCatalog.forEach((art) => {
   martialLookup.set(art.id, art);
   martialLookup.set(art.name, art);
+});
+
+const itemLookup = new Map<string, Item>();
+itemCatalog.forEach((entry) => {
+  itemLookup.set(entry.id, entry);
+  itemLookup.set(entry.name, entry);
 });
 
 function uid(prefix: string) {
@@ -131,6 +137,22 @@ function normalizeLocationUnlocks(
   return unlocks;
 }
 
+function normalizeNpcs(raw: Npc[] | undefined, fallback: Npc[]) {
+  const savedById = new Map((raw || []).map((npc) => [npc.id, npc]));
+  const next = fallback.map((npc) => ({
+    ...npc,
+    ...(savedById.get(npc.id) || {})
+  }));
+
+  for (const npc of raw || []) {
+    if (!fallback.some((entry) => entry.id === npc.id)) {
+      next.push({ ...npc });
+    }
+  }
+
+  return next;
+}
+
 function deriveNpcStoryState(npc: Npc): NpcStoryState {
   if (npc.companion) return "companion";
   if (npc.status.includes("离") || npc.status.includes("散")) return "departed";
@@ -174,23 +196,49 @@ function normalizeInventory(raw: Item[] | undefined) {
       return item && legacyType !== "weapon" && legacyType !== "armor" && legacyType !== "accessory";
     })
     .map((item) => {
+      const template = itemLookup.get(item.id) || itemLookup.get(item.name);
       const legacyType = (item as { type?: string }).type;
       const inferredType: Item["type"] = legacyType === "quest"
         ? "quest"
         : legacyType === "consumable" || item.usable || typeof item.hpRestore === "number" || typeof item.qiRestore === "number"
           ? "consumable"
-          : "quest";
+          : legacyType === "goods" || template?.type === "goods"
+            ? "goods"
+            : "quest";
       return {
         id: item.id,
         name: item.name,
         desc: item.desc,
         count: item.count,
         type: inferredType,
+        value: item.value ?? template?.value ?? 0,
         hpRestore: item.hpRestore,
         qiRestore: item.qiRestore,
-        usable: item.usable
+        usable: item.usable,
+        canSell: item.canSell ?? template?.canSell,
+        canSteal: item.canSteal ?? template?.canSteal
       };
     });
+}
+
+function normalizeEconomy(raw: GameState["economy"] | undefined, fallback: GameState["economy"]) {
+  const merchantStocks = { ...structuredClone(fallback.merchantStocks), ...(raw?.merchantStocks || {}) };
+  const merchantBlockedUntilDay = { ...(fallback.merchantBlockedUntilDay || {}), ...(raw?.merchantBlockedUntilDay || {}) };
+  const stolenNpcState = { ...(fallback.stolenNpcState || {}) };
+
+  Object.entries(raw?.stolenNpcState || {}).forEach(([npcId, entry]) => {
+    stolenNpcState[npcId] = {
+      silverTaken: entry?.silverTaken || 0,
+      itemCounts: { ...(entry?.itemCounts || {}) }
+    };
+  });
+
+  return {
+    merchantStocks,
+    merchantBlockedUntilDay,
+    stolenNpcState,
+    pendingAction: raw?.pendingAction ? structuredClone(raw.pendingAction) : undefined
+  };
 }
 
 function relabelAbilities(character: Character): Character {
@@ -248,6 +296,11 @@ function makePendingCheck(raw: GamePatch["pendingCheck"]): PendingCheck | undefi
     enemyIntent: raw.enemyIntent,
     suggestedAction: raw.suggestedAction
   };
+}
+
+function isInitiativePendingCheck(check?: PendingCheck) {
+  if (!check?.label) return false;
+  return check.label.includes("抢先手") || check.label.includes("先攻");
 }
 
 function makePendingDamage(raw: Partial<PendingDamage> | undefined): PendingDamage | undefined {
@@ -310,7 +363,7 @@ function makeEnemyCombat(name = "黑衣刺客"): GameState["combat"] {
 function normalizeCombat(combat: GameState["combat"] | undefined): GameState["combat"] {
   if (!combat?.active) return { active: false, round: 0, phase: "ended", stakes: "" };
 
-  const normalized = makeEnemyCombat(combat.enemy || "黑衣刺客");
+  const normalized = makeEnemyCombat(combat.enemy || "姒涙垼銆傞崚鍝勵吂");
   return {
     ...normalized,
     ...combat,
@@ -420,7 +473,7 @@ export function normalizeGameState(raw: GameState): GameState {
     ...location,
     unlocked: location.unlocked || Boolean(locationUnlocks[location.id])
   }));
-  const npcs = current.npcs || base.npcs;
+  const npcs = normalizeNpcs(current.npcs, base.npcs);
   const npcStoryState = normalizeNpcStoryState(npcs, current.npcStoryState, base.npcStoryState);
   const quests = current.quests || [];
   const questStateMap = normalizeQuestStateMap(quests, current.questStateMap);
@@ -428,10 +481,11 @@ export function normalizeGameState(raw: GameState): GameState {
   const storyFlags = normalizeStoryFlags(current.storyFlags, base.storyFlags);
   const rumors = normalizeRumors(current.rumors);
   const relationshipRoutes = normalizeRelationshipRoutes(npcs, current.relationshipRoutes, base.relationshipRoutes);
+  const economy = normalizeEconomy(current.economy, base.economy);
 
   if (combat.active) {
     if (pendingDamage) combat.phase = "awaiting_damage_roll";
-    else if (pendingCheck) combat.phase = "awaiting_hit_check";
+    else if (pendingCheck) combat.phase = isInitiativePendingCheck(pendingCheck) ? "opening" : "awaiting_hit_check";
   }
 
   return {
@@ -452,6 +506,7 @@ export function normalizeGameState(raw: GameState): GameState {
     questStateMap,
     rumors,
     relationshipRoutes,
+    economy,
     messages: current.messages || base.messages,
     combat,
     systemLog: current.systemLog || base.systemLog,
@@ -477,12 +532,58 @@ export function normalizeGameState(raw: GameState): GameState {
       npcStoryState,
       questStateMap,
       rumors,
-      relationshipRoutes
+      relationshipRoutes,
+      economy
     }),
     pendingCheck,
     pendingDamage,
     innerInjury: current.innerInjury || 0
   };
+}
+
+function normalizePatchedItem(raw: Partial<Item> & { name: string }): Item {
+  const template = itemLookup.get(raw.id || "") || itemLookup.get(raw.name);
+  const inferredType: Item["type"] = raw.type
+    || template?.type
+    || (raw.usable || typeof raw.hpRestore === "number" || typeof raw.qiRestore === "number"
+      ? "consumable"
+      : "quest");
+
+  return {
+    id: raw.id || template?.id || uid("item"),
+    name: raw.name,
+    desc: raw.desc || template?.desc || "江湖里常见的一件旧物。",
+    count: raw.count || 1,
+    type: inferredType,
+    value: raw.value ?? template?.value ?? 0,
+    usable: raw.usable ?? template?.usable,
+    hpRestore: raw.hpRestore ?? template?.hpRestore,
+    qiRestore: raw.qiRestore ?? template?.qiRestore,
+    canSell: raw.canSell ?? template?.canSell,
+    canSteal: raw.canSteal ?? template?.canSteal
+  };
+}
+
+function applyInventoryDelta(hero: Character, change: NonNullable<GamePatch["itemChanges"]>[number]) {
+  const target = hero.inventory.find((item) => item.id === change.itemId || item.name === change.name);
+  if (change.delta > 0) {
+    const rawItem = change.item
+      ? { ...change.item, id: change.item.id || change.itemId, name: change.item.name }
+      : target
+        ? { ...target }
+        : change.itemId
+          ? { ...(itemLookup.get(change.itemId) || {}), id: change.itemId, name: change.name || itemLookup.get(change.itemId)?.name || change.itemId }
+          : undefined;
+    if (!rawItem?.name) return;
+    const normalized = normalizePatchedItem({ ...rawItem, count: change.delta, name: rawItem.name });
+    if (target) target.count += change.delta;
+    else hero.inventory.push(normalized);
+    return;
+  }
+
+  if (!target) return;
+  target.count = Math.max(0, target.count + change.delta);
+  hero.inventory = hero.inventory.filter((item) => item.count > 0);
 }
 
 export function applyPatchToState(prev: GameState, patch: GamePatch): GameState {
@@ -500,6 +601,7 @@ export function applyPatchToState(prev: GameState, patch: GamePatch): GameState 
     next.innerInjury = clamp((next.innerInjury || 0) + patch.innerInjuryChange, 0, 100);
   }
   if (patch.acChange) hero.ac = Math.max(0, hero.ac + patch.acChange);
+  if (patch.silverChange) hero.silver = Math.max(0, hero.silver + patch.silverChange);
 
   if (patch.abilityChanges) {
     hero.abilities = hero.abilities.map((ability) => ({
@@ -518,17 +620,47 @@ export function applyPatchToState(prev: GameState, patch: GamePatch): GameState 
         || (patch.newItem.usable || typeof patch.newItem.hpRestore === "number" || typeof patch.newItem.qiRestore === "number"
           ? "consumable"
           : "quest"),
+      value: patch.newItem.value ?? 0,
       usable: patch.newItem.usable,
       hpRestore: patch.newItem.hpRestore,
-      qiRestore: patch.newItem.qiRestore
+      qiRestore: patch.newItem.qiRestore,
+      canSell: patch.newItem.canSell,
+      canSteal: patch.newItem.canSteal
     };
-    const existing = hero.inventory.find((item) => item.name === newItem.name);
-    if (existing) existing.count += newItem.count;
-    else hero.inventory.push(newItem);
   }
 
   if (patch.removeItemId) {
     hero.inventory = hero.inventory.filter((item) => item.id !== patch.removeItemId);
+  }
+
+  if (patch.itemChanges) {
+    patch.itemChanges.forEach((change) => applyInventoryDelta(hero, change));
+  }
+
+  if (patch.economyUpdate) {
+    if (patch.economyUpdate.merchantStocks) {
+      next.economy.merchantStocks = {
+        ...next.economy.merchantStocks,
+        ...structuredClone(patch.economyUpdate.merchantStocks)
+      };
+    }
+    if (patch.economyUpdate.merchantBlockedUntilDay) {
+      next.economy.merchantBlockedUntilDay = {
+        ...next.economy.merchantBlockedUntilDay,
+        ...patch.economyUpdate.merchantBlockedUntilDay
+      };
+    }
+    if (patch.economyUpdate.stolenNpcState) {
+      Object.entries(patch.economyUpdate.stolenNpcState).forEach(([npcId, entry]) => {
+        next.economy.stolenNpcState[npcId] = {
+          silverTaken: entry.silverTaken,
+          itemCounts: { ...(entry.itemCounts || {}) }
+        };
+      });
+    }
+    if ("pendingAction" in patch.economyUpdate) {
+      next.economy.pendingAction = patch.economyUpdate.pendingAction || undefined;
+    }
   }
 
   if (patch.location) {
@@ -689,7 +821,7 @@ export function applyPatchToState(prev: GameState, patch: GamePatch): GameState 
   if (next.pendingDamage && next.combat.active) {
     next.combat.phase = "awaiting_damage_roll";
   } else if (next.pendingCheck && next.combat.active) {
-    next.combat.phase = "awaiting_hit_check";
+    next.combat.phase = isInitiativePendingCheck(next.pendingCheck) ? "opening" : "awaiting_hit_check";
   }
   if (!next.combat.active) {
     next.pendingDamage = undefined;

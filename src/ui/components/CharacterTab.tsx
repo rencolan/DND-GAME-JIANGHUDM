@@ -35,6 +35,7 @@ export function CharacterTab({
           <div className="bar"><span className="hp" style={{ width: `${(game.character.hp / Math.max(1, game.character.maxHp)) * 100}%` }} /></div>
           <div className="bar-label"><span>内力</span><b>{game.character.qi}/{game.character.maxQi}</b></div>
           <div className="bar"><span className="qi" style={{ width: `${game.character.maxQi ? (game.character.qi / game.character.maxQi) * 100 : 0}%` }} /></div>
+          <p className="inner-state">银两 {game.character.silver}</p>
           <p className="inner-state">内伤 {game.innerInjury || 0}</p>
         </div>
       </section>

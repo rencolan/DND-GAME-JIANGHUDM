@@ -1,9 +1,8 @@
 import { Dices, Send, User } from "lucide-react";
-import { type CSSProperties, type FormEvent, useMemo } from "react";
+import { type CSSProperties, type FormEvent, useEffect, useMemo, useState } from "react";
 import { doubleDamageDice } from "../../game/combat";
-import { abilityModifier } from "../../game/rules";
 import { currentLocationName, isVisibleNpc, primaryRouteForNpc } from "../../game/world";
-import type { DrawerTab } from "../../types";
+import type { DrawerTab, Message, PendingCheck } from "../../types";
 import { sceneAssets } from "../display";
 import type { GameSession } from "../useGameSession";
 import { AppHeader } from "./AppHeader";
@@ -21,10 +20,47 @@ import { PendingCheckCard } from "./PendingCheckCard";
 import { SystemTab } from "./SystemTab";
 
 const BGM_SRC = "../assets/bgm/Seven_Peaks_at_Twilight.mp3";
+const COMBAT_SUMMARY_RE = /^【(先攻结果|攻击结果|伤害结果|敌方结果)】/;
 
 type GameScreenProps = {
   session: GameSession;
 };
+
+type CombatHudSummary = {
+  id: string;
+  title: string;
+  headline: string;
+  detail?: string;
+};
+
+function readLatestCombatSummary(messages: Message[]): CombatHudSummary | undefined {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message.role !== "system" || !COMBAT_SUMMARY_RE.test(message.text)) continue;
+
+    const lines = message.text.split("\n").filter(Boolean);
+    const title = lines[0]?.replace(/[【】]/g, "") || "战斗结果";
+    return {
+      id: message.id,
+      title,
+      headline: lines[1] || "战斗结果已更新。",
+      detail: lines.slice(2).join(" · ") || undefined
+    };
+  }
+
+  return undefined;
+}
+
+function rollModeLabel(mode?: PendingCheck["rollMode"]) {
+  switch (mode) {
+    case "advantage":
+      return "优势判定";
+    case "disadvantage":
+      return "劣势判定";
+    default:
+      return "常规判定";
+  }
+}
 
 export function GameScreen({ session }: GameScreenProps) {
   const {
@@ -33,8 +69,6 @@ export function GameScreen({ session }: GameScreenProps) {
     setApi,
     input,
     setInput,
-    rollMode,
-    setRollMode,
     drawerOpen,
     setActiveTab,
     activeTab,
@@ -52,23 +86,25 @@ export function GameScreen({ session }: GameScreenProps) {
     musicEnabled,
     bgmVolume,
     setBgmVolume,
+    sfxEnabled,
+    sfxVolume,
+    setSfxVolume,
     uiLocked,
     endRef,
     fileInputRef,
     audioRef,
-    canContinue,
     closePanels,
+    completeRolling,
     applyDeepSeekPreset,
     toggleMusic,
+    toggleSfx,
     runApiTest,
-    continueGame,
     exportSave,
     resetGame,
     beginTutorialCombat,
     skipTutorial,
     submitAction,
     importSave,
-    startOriginGame,
     openDrawer,
     openPendingCheck,
     toggleDice,
@@ -99,19 +135,79 @@ export function GameScreen({ session }: GameScreenProps) {
   const combatAttack = game.combat.active && game.combat.phase === "awaiting_hit_check";
   const awaitingDamage = Boolean(pendingDamage);
   const controlsBlocked = uiLocked || Boolean(session.rolling);
-  const dexAbility = game.character.abilities.find((ability) => ability.key === "dex");
   const pendingDamageDice = pendingDamage
     ? (pendingDamage.isCritical ? doubleDamageDice(pendingDamage.damageDice) : pendingDamage.damageDice)
     : undefined;
   const pendingCheckTag = combatInitiative ? "待先攻" : combatAttack ? "待攻击" : "待判定";
   const pendingCheckReason = combatInitiative
-    ? "先攻固定掷身法（DEX）。胜则你先出手，败则敌方先动。"
+    ? "本轮先攻固定使用身法判定。"
     : combatAttack
-      ? "先做命中判定；命中后再掷伤害。d20=20 暴击，d20=1 必失手。"
+      ? "先命中，后伤害。"
       : currentCheck?.reason;
   const pendingCheckAction = combatInitiative ? "掷先攻" : combatAttack ? "掷攻击" : "进行判定";
+  const effectivePendingCheckReason = pendingCheckReason || currentCheck?.reason;
+  const latestCombatSummary = useMemo(() => readLatestCombatSummary(game.messages), [game.messages]);
+  const [visibleCombatSummary, setVisibleCombatSummary] = useState<CombatHudSummary | undefined>(undefined);
 
-  const effectivePendingCheckReason = currentCheck?.reason || pendingCheckReason;
+  useEffect(() => {
+    if (!game.combat.active) {
+      setVisibleCombatSummary(undefined);
+      return;
+    }
+    if (!latestCombatSummary) return;
+
+    setVisibleCombatSummary(latestCombatSummary);
+    const timer = window.setTimeout(() => {
+      setVisibleCombatSummary((current) => current?.id === latestCombatSummary.id ? undefined : current);
+    }, 2600);
+
+    return () => window.clearTimeout(timer);
+  }, [game.combat.active, latestCombatSummary]);
+
+  const enemySummary = game.combat.active
+    ? `${game.combat.enemy || "敌人"}`
+    : undefined;
+  const actionSummary = pendingDamage
+    ? `${pendingDamage.label} · ${pendingDamageDice}${pendingDamage.damageBonus ? ` +${pendingDamage.damageBonus}` : ""}`
+    : currentCheck
+      ? `${currentCheck.label} · DC ${currentCheck.dc}`
+      : undefined;
+  const actionHint = pendingDamage
+    ? "命中已确认，下一步直接掷伤害。"
+    : currentCheck
+      ? `${rollModeLabel(currentCheck.rollMode)} · ${effectivePendingCheckReason}`
+      : undefined;
+  const hudButton = pendingDamage
+    ? { label: "掷伤害", onClick: openPendingCheck }
+    : currentCheck
+      ? { label: "去掷骰", onClick: openPendingCheck }
+      : undefined;
+  const hudState = visibleCombatSummary
+    ? {
+      kind: "result" as const,
+      kicker: visibleCombatSummary.title,
+      headline: visibleCombatSummary.headline,
+      detail: visibleCombatSummary.detail
+    }
+    : actionSummary
+      ? {
+        kind: "prompt" as const,
+        kicker: pendingDamage ? "待伤害" : pendingCheckTag,
+        headline: actionSummary,
+        detail: actionHint
+      }
+      : enemySummary
+        ? {
+          kind: "idle" as const,
+          kicker: "战斗中",
+          headline: enemySummary,
+          detail: "等待下一次交锋。"
+        }
+        : undefined;
+  const hudBadges = [
+    game.combat.active ? `HP ${game.combat.enemyHp}/${game.combat.enemyMaxHp}` : undefined,
+    game.combat.active && game.combat.round ? `回合 ${game.combat.round}` : undefined
+  ].filter(Boolean) as string[];
   const appStyle = {
     "--scene-bg": `url("${sceneBackground}")`
   } as CSSProperties;
@@ -171,6 +267,10 @@ export function GameScreen({ session }: GameScreenProps) {
         musicEnabled={musicEnabled}
         bgmVolume={bgmVolume}
         setBgmVolume={setBgmVolume}
+        toggleSfx={toggleSfx}
+        sfxEnabled={sfxEnabled}
+        sfxVolume={sfxVolume}
+        setSfxVolume={setSfxVolume}
       />
     );
   }
@@ -200,20 +300,53 @@ export function GameScreen({ session }: GameScreenProps) {
           onBeginTutorialCombat={beginTutorialCombat}
           onSkipTutorial={skipTutorial}
         />
-        <EnemyCard combat={game.combat} />
-        <PendingCheckCard
-          currentCheck={currentCheck}
-          pendingDamage={pendingDamage}
-          pendingDamageDice={pendingDamageDice}
-          pendingCheckTag={pendingCheckTag}
-          pendingCheckReason={effectivePendingCheckReason}
-          pendingCheckAction={pendingCheckAction}
-          onOpenPendingCheck={openPendingCheck}
-          combatActive={game.combat.active}
-        />
+        {!game.combat.active && <EnemyCard combat={game.combat} />}
+        {!game.combat.active && (
+          <PendingCheckCard
+            currentCheck={currentCheck}
+            pendingDamage={pendingDamage}
+            pendingDamageDice={pendingDamageDice}
+            pendingCheckTag={pendingCheckTag}
+            pendingCheckReason={effectivePendingCheckReason}
+            pendingCheckAction={pendingCheckAction}
+            onOpenPendingCheck={openPendingCheck}
+            combatActive={false}
+          />
+        )}
       </ChatLog>
 
-      {session.rolling && <DiceRollOverlay rolling={session.rolling} />}
+      {hudState && (
+        <section className="action-hud">
+          <div className={`action-hud-card ${hudState.kind}`}>
+            <div className="action-hud-main">
+              <div className="action-hud-topline">
+                <span className="action-hud-kicker">{hudState.kicker}</span>
+                {hudBadges.length > 0 && (
+                  <div className="action-hud-badges">
+                    {hudBadges.map((badge) => <i key={badge} className="action-hud-badge">{badge}</i>)}
+                  </div>
+                )}
+              </div>
+              <b>{hudState.headline}</b>
+              {hudState.detail && <small>{hudState.detail}</small>}
+            </div>
+            {hudButton && (
+              <button type="button" onClick={hudButton.onClick} className="action-hud-button">
+                {hudButton.label}
+              </button>
+            )}
+          </div>
+        </section>
+      )}
+
+      {session.rolling && (
+        <DiceRollOverlay
+          rolling={session.rolling}
+          onComplete={completeRolling}
+          sfxEnabled={sfxEnabled}
+          sfxVolume={sfxVolume}
+        />
+      )}
 
       <DicePanel
         diceOpen={diceOpen}
@@ -223,14 +356,11 @@ export function GameScreen({ session }: GameScreenProps) {
         combatInitiative={combatInitiative}
         combatAttack={combatAttack}
         pendingCheckReason={effectivePendingCheckReason}
-        rollMode={rollMode}
-        setRollMode={setRollMode}
         game={game}
         qiInvest={qiInvest}
         setQiInvest={setQiInvest}
         qiLimit={qiLimit}
         lowQi={lowQi}
-        dexAbility={dexAbility}
         rollDice={rollDice}
         rollDamageDice={rollDamageDice}
       />
@@ -246,10 +376,16 @@ export function GameScreen({ session }: GameScreenProps) {
           <input
             value={input}
             onChange={(event) => setInput(event.target.value)}
-            placeholder={awaitingDamage ? "先掷完这次武学伤害..." : game.combat.active ? "描述你用什么招式、怎样出手..." : "描述你的行动..."}
+            placeholder={
+              awaitingDamage
+                ? "先掷完这次武学伤害..."
+                : game.combat.active
+                  ? "描述你用什么招式、怎样出手..."
+                  : "描述你的行动..."
+            }
             disabled={busy || awaitingDamage}
           />
-          <button type="button" onClick={toggleDice} aria-label="打开骰子" disabled={busy}>
+          <button type="button" onClick={toggleDice} aria-label="打开骰子面板" disabled={busy}>
             <Dices size={21} />
           </button>
           <button type="submit" disabled={busy || awaitingDamage} aria-label="发送">

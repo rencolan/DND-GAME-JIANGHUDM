@@ -5,6 +5,7 @@ import type {
   GameState,
   Npc,
   PendingCheck,
+  ProposedWorldAction,
   RollMode,
   SceneType
 } from "../../types";
@@ -57,6 +58,22 @@ function makePendingCheck(raw: GamePatch["pendingCheck"]): PendingCheck | undefi
   };
 }
 
+function sanitizeProposedWorldAction(raw: AiProposalPayload["proposedWorldAction"] | undefined): ProposedWorldAction | undefined {
+  if (!raw?.kind) return undefined;
+  if (!["shop_list", "buy", "sell", "steal"].includes(raw.kind)) return undefined;
+  return {
+    kind: raw.kind,
+    npcId: raw.npcId,
+    itemId: raw.itemId,
+    itemName: raw.itemName,
+    quantity: typeof raw.quantity === "number" && Number.isFinite(raw.quantity) ? raw.quantity : undefined,
+    abilityKey: raw.abilityKey,
+    dc: typeof raw.dc === "number" && Number.isFinite(raw.dc) ? raw.dc : undefined,
+    rollMode: normalizeRollMode(raw.rollMode),
+    reason: raw.reason
+  };
+}
+
 function sanitizeAiProposals(raw: Partial<AiProposalPayload> | undefined): AiProposalPayload {
   const proposedCheck = raw?.proposedCheck ? makePendingCheck(raw.proposedCheck) : undefined;
   const normalizeHooks = (items: AiProposalPayload["proposedHooks"] | AiProposalPayload["proposedRumors"]) =>
@@ -89,7 +106,8 @@ function sanitizeAiProposals(raw: Partial<AiProposalPayload> | undefined): AiPro
     proposedCheck: proposedCheck ? { ...proposedCheck, reason: proposedCheck.reason } : undefined,
     proposedHooks: normalizeHooks(raw?.proposedHooks),
     proposedRumors: normalizeHooks(raw?.proposedRumors),
-    proposedNpcReactions
+    proposedNpcReactions,
+    proposedWorldAction: sanitizeProposedWorldAction(raw?.proposedWorldAction)
   };
 }
 
@@ -118,6 +136,11 @@ export function inferSceneType(text: string): SceneType | undefined {
   return sceneKeywords.find((entry) =>
     entry.keywords.some((keyword) => source.includes(keyword.toLowerCase()))
   )?.sceneType;
+}
+
+export function stripThinkingBlocks(text: string) {
+  const complete = text.replace(/<think\b[^>]*>[\s\S]*?<\/think>/gi, "");
+  return complete.replace(/<think\b[^>]*>[\s\S]*$/gi, "").trim();
 }
 
 export function stripJsonBlock(text: string) {
@@ -167,6 +190,9 @@ export function splitAiPayload(raw: unknown) {
     proposedRumors: Array.isArray(payload.proposedRumors) ? payload.proposedRumors as AiProposalPayload["proposedRumors"] : undefined,
     proposedNpcReactions: Array.isArray(payload.proposedNpcReactions)
       ? payload.proposedNpcReactions as AiProposalPayload["proposedNpcReactions"]
+      : undefined,
+    proposedWorldAction: typeof payload.proposedWorldAction === "object" && payload.proposedWorldAction
+      ? payload.proposedWorldAction as AiProposalPayload["proposedWorldAction"]
       : undefined
   });
 
@@ -189,7 +215,7 @@ export function aiProposalsToLocalPatch(state: GameState, proposals: AiProposalP
   if (proposals.sceneType) patch.sceneType = proposals.sceneType;
   if (proposals.systemNote) acceptedNotes.push(proposals.systemNote);
 
-  if (!state.pendingCheck && !state.pendingDamage && !state.combat.active && proposals.proposedCheck) {
+  if (!state.pendingCheck && !state.pendingDamage && !state.combat.active && proposals.proposedCheck && !proposals.proposedWorldAction) {
     patch.pendingCheck = proposals.proposedCheck;
   }
 

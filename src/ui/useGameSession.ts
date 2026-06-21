@@ -1,4 +1,4 @@
-import { ChangeEvent, useEffect, useRef, useState } from "react";
+﻿import { ChangeEvent, useEffect, useRef, useState } from "react";
 import {
   aiProposalsToLocalPatch,
   filterAiCombatPatch,
@@ -6,13 +6,15 @@ import {
   readApiErrorSummary,
   resolveApiEndpoint,
   splitAiPayload,
+  stripThinkingBlocks,
   stripJsonBlock,
   withSceneFallback
 } from "../game/ai/helpers";
-import { buildCombatActionCheckPrompt, buildCombatNarrationPrompt, buildSystemPrompt } from "../game/ai/prompt";
-import { doubleDamageDice, parseDamageDice, prepareCombatDamageRoll, startCombat } from "../game/combat";
+import { buildCombatNarrationPrompt, buildSystemPrompt } from "../game/ai/prompt";
+import { doubleDamageDice, prepareCombatDamageRoll, startCombat } from "../game/combat";
 import { applyPatchToState, normalizeGameState } from "../game/engine";
 import { localDm } from "../game/localdm";
+import { isEconomyTextId, tryResolveEconomyAction } from "../game/world/economySystem";
 import { parseCombatDamageResult, parseCombatHitResult } from "../game/world/helpers";
 import { initialGameState, originTemplates } from "../data";
 import {
@@ -37,10 +39,9 @@ import type {
   Message,
   PendingCheck,
   PendingDamage,
-  RollMode,
   SceneType
 } from "../types";
-import type { ApiTestState, RollPackage, RollingState } from "./sessionTypes";
+import type { ApiTestState, DiceGroup, RollPackage, RollingResult, RollingState } from "./sessionTypes";
 import {
   API_KEY,
   applyAllocation,
@@ -49,6 +50,8 @@ import {
   EMPTY_ROLL_PACKAGE,
   PLAYABLE_ORIGIN_ID,
   SAVE_KEY,
+  SFX_KEY,
+  SFX_VOLUME_KEY,
   SETUP_KEY,
   WORLD_STEP,
   advanceTime,
@@ -77,6 +80,17 @@ type CombatAiStep = {
   actionText: string;
   prompt: string;
   fallbackText: string;
+};
+
+type EnemyTurnSummaryDetails = {
+  actionLabel: string;
+  naturalRoll: number;
+  total: number;
+  hit: boolean;
+  critical: boolean;
+  damage: number;
+  heroHpBefore: number;
+  heroHpAfter: number;
 };
 
 const combatSceneLabels: Record<GameState["sceneType"], string> = {
@@ -129,25 +143,43 @@ function buildCombatFallbackText(
   }
 }
 
-function mergeCombatActionCheck(
-  current: GameState["pendingCheck"],
-  fallback: GamePatch["pendingCheck"] | undefined,
-  proposed: AiProposalPayload["proposedCheck"] | undefined
-): GamePatch["pendingCheck"] | undefined {
-  if (!current) return fallback;
-  if (!fallback && !proposed) return undefined;
+function buildCombatSummaryMessage(title: string, lines: string[]) {
+  return `【${title}】\n${lines.join("\n")}`;
+}
 
-  return {
-    label: proposed?.label || fallback?.label || current.label,
-    abilityKey: proposed?.abilityKey || fallback?.abilityKey || current.abilityKey,
-    martialArtId: proposed?.martialArtId || fallback?.martialArtId || current.martialArtId,
-    rollMode: proposed?.rollMode || fallback?.rollMode || current.rollMode,
-    dc: proposed?.dc ?? fallback?.dc ?? current.dc,
-    reason: proposed?.reason || fallback?.reason || current.reason,
-    risk: proposed?.risk || fallback?.risk || current.risk,
-    enemyIntent: proposed?.enemyIntent || fallback?.enemyIntent || current.enemyIntent,
-    suggestedAction: proposed?.suggestedAction || fallback?.suggestedAction || current.suggestedAction
-  };
+function buildInitiativeSummary(enemyName: string, hit: ReturnType<typeof parseCombatHitResult>) {
+  return buildCombatSummaryMessage("先攻结果", [
+    hit.success ? `你抢到了对 ${enemyName} 的先手。` : `${enemyName} 抢到了先手。`,
+    `检定 ${hit.total} / DC ${hit.dc} · d20=${hit.naturalRoll}${hit.isCritical ? " · 暴击" : ""}`
+  ]);
+}
+
+function buildPlayerHitSummary(enemyName: string, hit: ReturnType<typeof parseCombatHitResult>, artName: string) {
+  return buildCombatSummaryMessage("攻击结果", [
+    hit.success ? `${artName} 命中 ${enemyName}。` : `${artName} 未命中 ${enemyName}。`,
+    `检定 ${hit.total} / DC ${hit.dc} · d20=${hit.naturalRoll}${hit.isCritical ? " · 暴击" : ""}`,
+    hit.success ? "下一步：掷伤害骰。" : "这一手落空，敌方将接续出手。"
+  ]);
+}
+
+function buildPlayerDamageSummary(enemyName: string, label: string, damageTotal: number, enemyHpBefore?: number, enemyHpAfter?: number, isCritical?: boolean) {
+  const hpLine = typeof enemyHpBefore === "number" && typeof enemyHpAfter === "number"
+    ? `${enemyName} HP：${enemyHpBefore} → ${enemyHpAfter}`
+    : undefined;
+  return buildCombatSummaryMessage("伤害结果", [
+    `${label} 对 ${enemyName} 造成 ${damageTotal} 点伤害${isCritical ? "（暴击）" : ""}。`,
+    ...(hpLine ? [hpLine] : [])
+  ]);
+}
+
+function buildEnemyTurnSummary(enemyName: string, details: EnemyTurnSummaryDetails) {
+  return buildCombatSummaryMessage("敌方结果", [
+    details.hit
+      ? `${enemyName} 的 ${details.actionLabel} 命中了你，造成 ${details.damage} 点伤害${details.critical ? "（暴击）" : ""}。`
+      : `${enemyName} 的 ${details.actionLabel} 没有打中你。`,
+    `检定 ${details.total} · d20=${details.naturalRoll}`,
+    `你的 HP：${details.heroHpBefore} → ${details.heroHpAfter}`
+  ]);
 }
 
 function resolvePendingRollMode(check?: PendingCheck) {
@@ -170,6 +202,24 @@ function qiInvestBonus(qi: number) {
   return Math.floor(qi / 2);
 }
 
+function buildDiceGroups(notation: string): DiceGroup[] {
+  const matches = [...notation.toLowerCase().matchAll(/(\d+)d(\d+)/g)];
+  return matches.map((match) => ({
+    qty: Number(match[1]),
+    sides: Number(match[2])
+  }));
+}
+
+function formatRollModeText(mode: PendingCheck["rollMode"], faceResults: number[], picked: number) {
+  if (mode === "advantage") {
+    return `优势（${faceResults.join("/")}），取 ${picked}`;
+  }
+  if (mode === "disadvantage") {
+    return `劣势（${faceResults.join("/")}），取 ${picked}`;
+  }
+  return "常规";
+}
+
 export function useGameSession() {
   const savedGame = readJson<GameState>(SAVE_KEY, initialGameState);
   const initialApi = readJson<ApiConfig>(API_KEY, defaultApiConfig("openai"));
@@ -184,7 +234,6 @@ export function useGameSession() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<DrawerTab>("character");
   const [input, setInput] = useState("");
-  const [rollMode, setRollMode] = useState<RollMode>("normal");
   const [diceOpen, setDiceOpen] = useState(false);
   const [qiInvest, setQiInvest] = useState(0);
   const [selectedLocationId, setSelectedLocationId] = useState<string | undefined>(undefined);
@@ -195,6 +244,8 @@ export function useGameSession() {
   const [apiTest, setApiTest] = useState<ApiTestState>({ status: "idle" });
   const [musicEnabled, setMusicEnabled] = useState(() => readJson<boolean>(BGM_KEY, true));
   const [bgmVolume, setBgmVolume] = useState(() => clamp(readJson<number>(BGM_VOLUME_KEY, 34), 0, 100));
+  const [sfxEnabled, setSfxEnabled] = useState(() => readJson<boolean>(SFX_KEY, true));
+  const [sfxVolume, setSfxVolume] = useState(() => clamp(readJson<number>(SFX_VOLUME_KEY, 56), 0, 100));
   const [uiLocked, setUiLocked] = useState(false);
 
   const endRef = useRef<HTMLDivElement | null>(null);
@@ -202,6 +253,7 @@ export function useGameSession() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const fadeTimerRef = useRef<number | null>(null);
   const uiLockTimerRef = useRef<number | null>(null);
+  const rollCompletionRef = useRef<((result: RollingResult) => void) | null>(null);
 
   const canContinue = Boolean(readJson<GameState>(SAVE_KEY, initialGameState).setupComplete);
   const selectedOrigin = originTemplates.find((origin) => origin.id === selectedOriginId) || originTemplates[0];
@@ -230,6 +282,14 @@ export function useGameSession() {
   useEffect(() => {
     localStorage.setItem(BGM_VOLUME_KEY, JSON.stringify(bgmVolume));
   }, [bgmVolume]);
+
+  useEffect(() => {
+    localStorage.setItem(SFX_KEY, JSON.stringify(sfxEnabled));
+  }, [sfxEnabled]);
+
+  useEffect(() => {
+    localStorage.setItem(SFX_VOLUME_KEY, JSON.stringify(sfxVolume));
+  }, [sfxVolume]);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -319,6 +379,21 @@ export function useGameSession() {
     }, duration);
   }
 
+  function completeRolling(result: RollingResult) {
+    const complete = rollCompletionRef.current;
+    if (!complete) return;
+
+    rollCompletionRef.current = null;
+    setRolling(null);
+    closePanels();
+    complete(result);
+  }
+
+  function beginRolling(nextRolling: RollingState, onComplete: (result: RollingResult) => void) {
+    rollCompletionRef.current = onComplete;
+    setRolling(nextRolling);
+  }
+
   function applyDeepSeekPreset(model: string) {
     setApi((prev) => ({
       ...prev,
@@ -344,6 +419,10 @@ export function useGameSession() {
       }
       audio.pause();
     }
+  }
+
+  function toggleSfx() {
+    setSfxEnabled((enabled) => !enabled);
   }
 
   function continueGame() {
@@ -413,7 +492,7 @@ export function useGameSession() {
         model: api.model,
         messages,
         temperature: 0.8,
-        max_tokens: 450
+        max_tokens: 700
       })
     });
 
@@ -423,7 +502,8 @@ export function useGameSession() {
 
     const data = await response.json();
     const raw = data.choices?.[0]?.message?.content || "";
-    const { visibleText, patchText } = stripJsonBlock(raw);
+    const cleaned = stripThinkingBlocks(raw);
+    const { visibleText, patchText } = stripJsonBlock(cleaned);
     let patch: GamePatch = {};
     let proposals: AiProposalPayload = {};
 
@@ -558,6 +638,19 @@ export function useGameSession() {
     setGame(baseGame);
     const localCombatResolution = localDm(text, baseGame, globalUpdateDue);
 
+    if (!baseGame.combat.active && isEconomyTextId(localCombatResolution.result.textId)) {
+      setGame((prev) => {
+        const patched = applyPatchToState(prev, withSceneFallback(localCombatResolution.patch, localCombatResolution.text, text));
+        return {
+          ...patched,
+          messages: [...patched.messages, { id: uid("dm"), role: "dm", text: localCombatResolution.text }]
+        };
+      });
+      closePanels();
+      setBusy(false);
+      return;
+    }
+
     if (
       baseGame.combat.active &&
       baseGame.pendingCheck &&
@@ -565,47 +658,15 @@ export function useGameSession() {
       localCombatResolution.result.textOverride &&
       !localCombatResolution.result.combatFlow
     ) {
-      try {
-        const aiResult = await callAi(
-          baseGame,
-          text,
-          buildCombatActionCheckPrompt(baseGame, text),
-          localCombatResolution.text
-        );
-        const mergedPendingCheck = mergeCombatActionCheck(
-          baseGame.pendingCheck,
-          localCombatResolution.patch.pendingCheck,
-          aiResult.proposals.proposedCheck
-        );
-        const patchedCombatPrompt: GamePatch = {
-          ...localCombatResolution.patch,
-          pendingCheck: mergedPendingCheck,
-          ...filterAiCombatPatch(aiResult.patch)
+      setGame((prev) => {
+        const patched = applyPatchToState(prev, withSceneFallback(localCombatResolution.patch, localCombatResolution.text, text));
+        return {
+          ...patched,
+          messages: [...patched.messages, { id: uid("dm"), role: "dm", text: localCombatResolution.text }]
         };
-
-        setGame((prev) => {
-          const patched = applyPatchToState(prev, withSceneFallback(patchedCombatPrompt, aiResult.text, text));
-          return {
-            ...patched,
-            messages: [...patched.messages, { id: uid("dm"), role: "dm", text: aiResult.text }]
-          };
-        });
-      } catch (error) {
-        setGame((prev) => {
-          const patched = applyPatchToState(prev, withSceneFallback(localCombatResolution.patch, localCombatResolution.text, text));
-          return {
-            ...patched,
-            messages: [
-              ...patched.messages,
-              { id: uid("system"), role: "system", text: `API 调用失败，已切回本地主持：${error instanceof Error ? error.message : ""}` },
-              { id: uid("dm"), role: "dm", text: localCombatResolution.text }
-            ]
-          };
-        });
-      } finally {
-        closePanels();
-        setBusy(false);
-      }
+      });
+      closePanels();
+      setBusy(false);
       return;
     }
 
@@ -618,16 +679,23 @@ export function useGameSession() {
       const aiResult = await callAi(baseGame, text, aiPrompt);
       setGame((prev) => {
         const combatPatched = applyPatchToState(prev, withSceneFallback(localCombatResolution.patch, localCombatResolution.text, text));
+        const economyResolution = baseGame.combat.active
+          ? undefined
+          : aiResult.proposals.proposedWorldAction
+            ? tryResolveEconomyAction(text, combatPatched, globalUpdateDue, aiResult.proposals.proposedWorldAction)
+            : undefined;
         const aiProposalPatch = baseGame.combat.active ? {} : aiProposalsToLocalPatch(combatPatched, aiResult.proposals);
-        const patched = applyPatchToState(
-          combatPatched,
-          baseGame.combat.active
-            ? filterAiCombatPatch(aiResult.patch)
-            : withSceneFallback({ ...aiResult.patch, ...aiProposalPatch }, aiResult.text, text)
-        );
+        const aiNarrationPatch = baseGame.combat.active
+          ? filterAiCombatPatch(aiResult.patch)
+          : withSceneFallback({ ...aiResult.patch, ...aiProposalPatch }, aiResult.text, text);
+        const withEconomy = economyResolution
+          ? applyPatchToState(combatPatched, withSceneFallback(economyResolution.patch, economyResolution.textOverride || aiResult.text, text))
+          : combatPatched;
+        const patched = applyPatchToState(withEconomy, aiNarrationPatch);
+        const dmText = economyResolution?.textOverride || aiResult.text;
         return {
           ...patched,
-          messages: [...patched.messages, { id: uid("dm"), role: "dm", text: aiResult.text }]
+          messages: [...patched.messages, { id: uid("dm"), role: "dm", text: dmText }]
         };
       });
     } catch (error) {
@@ -652,6 +720,7 @@ export function useGameSession() {
     if (busy) return;
 
     const tutorialMode = isTutorialCombatGame(game);
+    const hit = parseCombatHitResult(hitText);
     const pendingDamagePatch = prepareCombatDamageRoll(art, hitText, qiBonusSpend, isCritical, game.character);
     const stagedPatch = tutorialMode
       ? {
@@ -668,6 +737,11 @@ export function useGameSession() {
     const systemMessage: Message = {
       id: uid("system"),
       role: "system",
+      text: buildPlayerHitSummary(stagedState.combat.enemy || "对手", hit, art.name)
+    };
+    const nextStepMessage: Message = {
+      id: uid("system"),
+      role: "system",
       text: `命中已确认，请掷 ${art.name} 的伤害骰：${art.damageDice}${art.damageBonus ? ` +${art.damageBonus}` : ""}`
     };
 
@@ -678,7 +752,8 @@ export function useGameSession() {
       ...stagedState,
       messages: [
         ...stagedState.messages,
-        systemMessage
+        systemMessage,
+        nextStepMessage
       ]
     });
 
@@ -686,7 +761,6 @@ export function useGameSession() {
 
     setBusy(true);
     try {
-      const hit = parseCombatHitResult(hitText);
       const narrationResults = await runCombatNarrationSequence([
         {
           state: stagedState,
@@ -773,6 +847,27 @@ export function useGameSession() {
       ? applyPatchToState(actionState, withSceneFallback(localCombatResolution.result.combatFlow.playerPatch, localCombatResolution.text, combinedText))
       : finalState;
     const enemyTurn = localCombatResolution.result.combatFlow?.enemyTurn;
+    const combatSummaryMessages: Message[] = [
+      {
+        id: uid("system"),
+        role: "system",
+        text: buildPlayerDamageSummary(
+          actionState.combat.enemy || "对手",
+          pendingDamage.label,
+          damage.total,
+          actionState.combat.enemyHp,
+          playerState.combat.enemyHp,
+          Boolean(pendingDamage.isCritical)
+        )
+      }
+    ];
+    if (enemyTurn) {
+      combatSummaryMessages.push({
+        id: uid("system"),
+        role: "system",
+        text: buildEnemyTurnSummary(finalState.combat.enemy || "对手", enemyTurn.details)
+      });
+    }
     const narrationSteps: CombatAiStep[] = [
       {
         state: playerState,
@@ -882,6 +977,7 @@ export function useGameSession() {
         ...patched,
         messages: [
           ...patched.messages,
+          ...combatSummaryMessages,
           ...(errorMessage ? [{ id: uid("system"), role: "system" as const, text: errorMessage }] : []),
           ...narrationResults.map((result) => ({ id: uid("dm"), role: "dm" as const, text: result.text }))
         ]
@@ -917,6 +1013,18 @@ export function useGameSession() {
     const localCombatResolution = localDm(text, actionState, globalUpdateDue);
 
     if (!actionState.combat.active) {
+      if (isEconomyTextId(localCombatResolution.result.textId)) {
+        setGame((prev) => {
+          const patched = applyPatchToState(prev, withSceneFallback(localCombatResolution.patch, localCombatResolution.text, text));
+          return {
+            ...patched,
+            messages: [...patched.messages, { id: uid("dm"), role: "dm", text: localCombatResolution.text }]
+          };
+        });
+        closePanels();
+        setBusy(false);
+        return;
+      }
       try {
         const aiPrompt = globalUpdateDue ? "Advance the broader world a little in the narration." : undefined;
         const aiResult = await callAi(actionState, text, aiPrompt);
@@ -952,11 +1060,33 @@ export function useGameSession() {
     }
 
     const hit = parseCombatHitResult(text);
+    const isInitiativeCheck = actionState.combat.phase === "opening";
+    const combatSummaryMessages: Message[] = [];
+    if (isInitiativeCheck) {
+      combatSummaryMessages.push({
+        id: uid("system"),
+        role: "system",
+        text: buildInitiativeSummary(actionState.combat.enemy || "对手", hit)
+      });
+    } else {
+      combatSummaryMessages.push({
+        id: uid("system"),
+        role: "system",
+        text: buildPlayerHitSummary(actionState.combat.enemy || "对手", hit, hit.label || "这一击")
+      });
+    }
     const finalState = applyPatchToState(actionState, withSceneFallback(localCombatResolution.patch, localCombatResolution.text, text));
     const playerState = localCombatResolution.result.combatFlow?.playerPatch
       ? applyPatchToState(actionState, withSceneFallback(localCombatResolution.result.combatFlow.playerPatch, localCombatResolution.text, text))
       : finalState;
     const enemyTurn = localCombatResolution.result.combatFlow?.enemyTurn;
+    if (enemyTurn) {
+      combatSummaryMessages.push({
+        id: uid("system"),
+        role: "system",
+        text: buildEnemyTurnSummary(finalState.combat.enemy || "对手", enemyTurn.details)
+      });
+    }
     const narrationSteps: CombatAiStep[] = [
       {
         state: playerState,
@@ -1067,6 +1197,7 @@ export function useGameSession() {
         ...patched,
         messages: [
           ...patched.messages,
+          ...combatSummaryMessages,
           ...(errorMessage ? [{ id: uid("system"), role: "system" as const, text: errorMessage }] : []),
           ...narrationResults.map((result) => ({ id: uid("dm"), role: "dm" as const, text: result.text }))
         ]
@@ -1184,16 +1315,12 @@ export function useGameSession() {
   function openPendingCheck() {
     if (uiLocked || rolling || busy) return;
     setDrawerOpen(false);
-    setRollMode(resolvePendingRollMode(game.pendingCheck));
     setDiceOpen(true);
   }
 
   function toggleDice() {
     if (uiLocked || rolling || busy) return;
     setDrawerOpen(false);
-    if (!diceOpen) {
-      setRollMode(resolvePendingRollMode(game.pendingCheck));
-    }
     setDiceOpen((open) => !open);
   }
 
@@ -1234,55 +1361,58 @@ export function useGameSession() {
     if (rolling || busy) return;
 
     const sendToDm = options.sendToDm ?? Boolean(check);
+    const hasActivePrompt = Boolean(check);
     const combatInitiativeRoll = game.combat.active && game.combat.phase === "opening";
     const combatAttack = game.combat.active && game.combat.phase === "awaiting_hit_check";
     const qiBonusSpend = game.combat.active ? 0 : clamp(options.qiBonusSpend ?? qiInvest, 0, game.character.qi);
     const qiBonus = qiInvestBonus(qiBonusSpend);
-    const first = Math.ceil(Math.random() * 20);
-    const second = Math.ceil(Math.random() * 20);
-    const picked = rollMode === "advantage"
-      ? Math.max(first, second)
-      : rollMode === "disadvantage"
-        ? Math.min(first, second)
-        : first;
-    const total = picked + mod + qiBonus;
-    const isCritical = combatAttack && picked === 20;
-    const isAutoFail = Boolean(check) && picked === 1;
-    const success = check
-      ? (isAutoFail ? false : (isCritical ? true : total >= check.dc))
-      : undefined;
-    const modeText = rollMode === "advantage"
-      ? `优势（${first}/${second}）`
-      : rollMode === "disadvantage"
-        ? `劣势（${first}/${second}）`
-        : "常规";
-    const outputLines = [
-      `【判定】${label}`,
-      `模式：${modeText}`,
-      `d20=${picked}`,
-      `加值：${mod >= 0 ? "+" : ""}${mod}`,
-      ...(!game.combat.active ? [`内力：${qiBonusSpend}（判定 +${qiBonus}）`] : []),
-      check ? `总计：${total} / DC ${check.dc}` : `总计：${total}`,
-      check ? `结果：${success ? "成功" : "失败"}` : "结果：仅记录本次掷骰",
-      ...(isCritical ? ["暴击：是"] : []),
-      ...(isAutoFail ? ["大失败：d20=1"] : []),
-      ...(combatInitiativeRoll ? ["阶段：先攻"] : []),
-      ...(combatAttack ? ["阶段：攻击"] : [])
-    ];
+    const effectiveRollMode = resolvePendingRollMode(check);
+    const notation = effectiveRollMode === "normal" ? "1d20" : "2d20";
+    const resolutionMode = effectiveRollMode === "advantage"
+      ? "highest"
+      : effectiveRollMode === "disadvantage"
+        ? "lowest"
+        : "first";
+    const bonus = mod + qiBonus;
+    const bonusLabel = [
+      `加值 ${mod >= 0 ? "+" : ""}${mod}`,
+      ...(!game.combat.active ? [`内力 +${qiBonus}`] : [])
+    ].join(" · ");
 
-    lockUi(1400);
-    setRolling({
+    lockUi(1800);
+    beginRolling({
       label,
-      total,
-      detail: `${modeText} · d20=${picked}${game.combat.active ? "" : ` · 内力 +${qiBonus}`}`
-    });
-    setQiInvest(0);
-    closePanels();
-
-    window.setTimeout(() => {
-      setRollMode("normal");
-      setRolling(null);
-      closePanels();
+      notation,
+      diceGroups: buildDiceGroups(notation),
+      animationKey: uid("roll"),
+      resolution: {
+        mode: resolutionMode,
+        bonus,
+        bonusLabel
+      },
+      settleMode: "engine"
+    }, (result) => {
+      const picked = result.resolvedValue;
+      const total = result.total;
+      const isCritical = combatAttack && picked === 20;
+      const isAutoFail = Boolean(check) && picked === 1;
+      const success = check
+        ? (isAutoFail ? false : (isCritical ? true : total >= check.dc))
+        : undefined;
+      const modeText = formatRollModeText(effectiveRollMode, result.faceResults, picked);
+      const outputLines = [
+        `【判定】${label}`,
+        `模式：${modeText}`,
+        `d20=${picked}`,
+        `加值：${mod >= 0 ? "+" : ""}${mod}`,
+        ...(!game.combat.active ? [`内力：${qiBonusSpend}（判定 +${qiBonus}）`] : []),
+        check ? `总计：${total} / DC ${check.dc}` : `总计：${total}`,
+        check ? `结果：${success ? "成功" : "失败"}` : "结果：仅记录本次掷骰",
+        ...(isCritical ? ["暴击：是"] : []),
+        ...(isAutoFail ? ["大失败：d20=1"] : []),
+        ...(combatInitiativeRoll ? ["阶段：先攻"] : []),
+        ...(combatAttack ? ["阶段：攻击"] : [])
+      ];
 
       if (sendToDm) {
         if (check && success && options.martialArt && combatAttack) {
@@ -1293,40 +1423,36 @@ export function useGameSession() {
         return;
       }
 
-      setGame((prev) => ({
-        ...prev,
-        character: {
-          ...prev.character,
-          qi: clamp(prev.character.qi - qiBonusSpend, 0, prev.character.maxQi)
-        },
-        messages: [...prev.messages, { id: uid("dice"), role: "dice", text: outputLines.join("\n") }]
-      }));
-    }, 1180);
+      if (!hasActivePrompt) return;
+    });
+    setQiInvest(0);
+    closePanels();
   }
 
   function rollDamageDice(pendingDamage: PendingDamage) {
     if (rolling || busy) return;
 
     const actualDamageDice = pendingDamage.isCritical ? doubleDamageDice(pendingDamage.damageDice) : pendingDamage.damageDice;
-    const { rolls, total } = parseDamageDice(actualDamageDice);
     const bonus = pendingDamage.damageBonus || 0;
-    const final = total + bonus;
-    const damageText = `【伤害】${pendingDamage.label} ${actualDamageDice} => [${rolls.join(" + ")}]${bonus ? ` + ${bonus}` : ""} = ${final}${pendingDamage.isCritical ? "\n暴击：是" : ""}`;
 
-    lockUi(1400);
-    setRolling({
+    lockUi(1800);
+    beginRolling({
       label: `${pendingDamage.label}伤害`,
-      total: final,
-      detail: `${actualDamageDice} = ${rolls.join(" + ")}${bonus ? ` + ${bonus}` : ""}`
+      notation: actualDamageDice,
+      diceGroups: buildDiceGroups(actualDamageDice),
+      animationKey: uid("roll"),
+      resolution: {
+        mode: "sum",
+        bonus,
+        bonusLabel: bonus ? `伤害加值 +${bonus}` : undefined
+      },
+      settleMode: "engine"
+    }, (result) => {
+      const rolls = result.faceResults;
+      const damageText = `【伤害】${pendingDamage.label} ${actualDamageDice} => [${rolls.join(" + ")}]${bonus ? ` + ${bonus}` : ""} = ${result.total}${pendingDamage.isCritical ? "\n暴击：是" : ""}`;
+      void submitDamageResult(damageText, pendingDamage);
     });
     closePanels();
-
-    window.setTimeout(() => {
-      setRollMode("normal");
-      setRolling(null);
-      closePanels();
-      void submitDamageResult(damageText, pendingDamage);
-    }, 1180);
   }
 
   return {
@@ -1350,8 +1476,6 @@ export function useGameSession() {
     setActiveTab,
     input,
     setInput,
-    rollMode,
-    setRollMode,
     diceOpen,
     setDiceOpen,
     qiInvest,
@@ -1372,6 +1496,10 @@ export function useGameSession() {
     setMusicEnabled,
     bgmVolume,
     setBgmVolume,
+    sfxEnabled,
+    setSfxEnabled,
+    sfxVolume,
+    setSfxVolume,
     uiLocked,
     setUiLocked,
     endRef,
@@ -1383,8 +1511,10 @@ export function useGameSession() {
     closePanels,
     tryPlayMusic,
     lockUi,
+    completeRolling,
     applyDeepSeekPreset,
     toggleMusic,
+    toggleSfx,
     runApiTest,
     continueGame,
     exportSave,

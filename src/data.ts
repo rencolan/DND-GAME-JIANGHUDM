@@ -1,13 +1,16 @@
 import type {
   Character,
+  EconomyState,
   GameState,
   Item,
   LocationNode,
   MartialArt,
+  MerchantProfile,
   Npc,
   ObjectiveHint,
   OriginTemplate,
-  SceneType
+  SceneType,
+  StealProfile
 } from "./types";
 import { calculateAcFromDex, calculateHpFromCon, calculateMaxQi } from "./game/rules";
 
@@ -32,6 +35,7 @@ const item = (id: string, name: string, desc: string, count = 1, extra: Partial<
   name,
   desc,
   count,
+  value: extra.value ?? 0,
   ...extra,
   type: extra.type || "quest"
 });
@@ -84,6 +88,7 @@ const makeCharacter = (
   qi: maxQi,
   maxQi,
   ac: calculateAcFromDex(focus[1]),
+  silver: 36,
   abilities: [
     { key: "str", label: "力道", value: focus[0] },
     { key: "dex", label: "身法", value: focus[1] },
@@ -97,6 +102,17 @@ const makeCharacter = (
   ...extra
 });
 };
+
+export const itemCatalog: Item[] = [
+  item("medicine", "閲戠柈鑽?", "鎭㈠ 8 鐐圭敓鍛姐€?", 1, { type: "consumable", usable: true, hpRestore: 8, value: 18 }),
+  item("qi-pill", "琛屾皵鏁?", "鎭㈠ 2 鐐瑰唴鍔涖€?", 1, { type: "consumable", usable: true, qiRestore: 2, value: 14 }),
+  item("dried-meat", "鑵婅倝骞茬伯", "鏂瑰寘閲岀殑甯稿骞茬伯锛岃兘鍏堝浠樹竴椁愩€?", 1, { type: "goods", value: 6 }),
+  item("lamp-oil", "鐏补灏忓￥", "鍑哄甯哥敤鐨勬补灏忓￥锛屽彲鎷夎繃涓€鏅氥€?", 1, { type: "goods", value: 9 }),
+  item("cloth-wrap", "甯冨寘鑽竷", "鏃呬汉甯哥敤鐨勫竷鏉★紝鍖呮墡浼ゅ彛鎴栧寘瑁归浂鐗╅兘鍚堥€傘€?", 1, { type: "goods", value: 11 }),
+  item("tea-brick", "鑼剁爾", "鍘嬬揣鐨勮尪鐮栵紝璺笂鎹㈣兘鎹簺閾惰揣銆?", 1, { type: "goods", value: 16 }),
+  item("silk-pouch", "缁告灏忚", "鍋氬伐杩樼畻缁嗙殑缁告灏忚锛屽競闈㈤噷绠楁槸椤轰漢鐨勮揣銆?", 1, { type: "goods", value: 28 }),
+  item("jade-pin", "鐜夌睧閽?", "灏忓阀鐨勭帀璐ㄥ彂閽楋紝鏄撳甫涔熸樉鐪笺€?", 1, { type: "goods", value: 42, canSteal: true })
+];
 
 export const defaultMartialArts = {
   dali: [
@@ -315,7 +331,26 @@ export const locations: LocationNode[] = [
   { id: "xingxiu", name: "星宿海", x: 15, y: 24, unlocked: false, desc: "毒雾与怪笑同起，远行者少有归人。" }
 ];
 
+const innkeeperNpc: Npc = {
+  id: "innkeeper",
+  name: "掌柜",
+  title: "大理客栈掌柜",
+  portrait: portrait("innkeeper"),
+  location: "大理城",
+  goal: "稳住客栈生意，也盯紧无量山传回来的风声",
+  attitude: "老练",
+  relationship: 52,
+  lastSeen: "客栈前堂",
+  status: "守着柜台待客",
+  tags: ["客栈", "生意", "消息"],
+  companion: false,
+  hidden: false,
+  discovered: true,
+  recruitable: false
+};
+
 export const npcs: Npc[] = [
+  innkeeperNpc,
   { id: "duan-yu", name: "段誉", title: "大理世子", portrait: portrait("duan-yu"), location: "无量山", goal: "误入山中乱局，还想护着身边的人", attitude: "温雅", relationship: 48, lastSeen: "无量山山道", status: "未现身", tags: ["大理", "世族"], companion: false, hidden: true, discovered: false },
   { id: "qiao-feng", name: "乔峰", title: "丐帮帮主", portrait: portrait("qiao-feng"), location: "雁门关", goal: "追查边关旧案", attitude: "敬重", relationship: 58, lastSeen: "北地酒肆", status: "远行", tags: ["丐帮", "豪侠"], companion: false },
   { id: "murong-fu", name: "慕容复", title: "姑苏公子", portrait: portrait("murong-fu"), location: "姑苏", goal: "寻找英雄帖背后的势力", attitude: "试探", relationship: 38, lastSeen: "燕子坞水榭", status: "观望", tags: ["姑苏", "世家"], companion: false },
@@ -326,6 +361,94 @@ export const npcs: Npc[] = [
   { id: "mu-wanqing", name: "木婉清", title: "黑衣箭影", portrait: portrait("mu-wanqing"), location: "无量山", goal: "挟着段誉突围，不让追兵靠近半步", attitude: "冷硬", relationship: 60, lastSeen: "无量山山道", status: "未现身", tags: ["追踪"], companion: false, hidden: true, discovered: false },
   { id: "shuang-er", name: "双儿", title: "客栈丫鬟", portrait: portrait("shuang-er"), location: "大理城", goal: "照看伤者，替掌柜留心往来人的动静", attitude: "温柔", relationship: 58, lastSeen: "客栈后院", status: "在客栈帮忙", tags: ["客栈", "疗伤", "细心"], companion: false, hidden: true, discovered: false, recruitable: false }
 ];
+
+export const merchantProfiles: MerchantProfile[] = [
+  {
+    npcId: "innkeeper",
+    locationId: "dali",
+    stock: [
+      { itemId: "medicine", count: 4 },
+      { itemId: "qi-pill", count: 2 },
+      { itemId: "dried-meat", count: 5 },
+      { itemId: "cloth-wrap", count: 3 },
+      { itemId: "lamp-oil", count: 2 }
+    ],
+    buyFromPlayerMultiplier: 0.5,
+    sellToPlayerMultiplier: 1.05,
+    greetingText: "瀹㈡爤閲岀殑鏃ョ敤闆剁墿锛岄兘鍦ㄨ繖閲屻€?"
+  }
+];
+
+export const stealProfiles: StealProfile[] = [
+  {
+    npcId: "innkeeper",
+    threatTier: "normal",
+    pocketSilver: 32,
+    pocketItems: [
+      { itemId: "cloth-wrap", count: 1 },
+      { itemId: "dried-meat", count: 1 },
+      { itemId: "tea-brick", count: 1 }
+    ],
+    exposure: "watched",
+    failureRelationshipPenalty: 16,
+    failureLocksTradeUntilNextDay: true
+  },
+  {
+    npcId: "a-zhu",
+    threatTier: "elite",
+    pocketSilver: 26,
+    pocketItems: [
+      { itemId: "jade-pin", count: 1 },
+      { itemId: "silk-pouch", count: 1 }
+    ],
+    exposure: "watched",
+    failureRelationshipPenalty: 12
+  },
+  {
+    npcId: "wang-yuyan",
+    threatTier: "normal",
+    pocketSilver: 12,
+    pocketItems: [
+      { itemId: "jade-pin", count: 1 }
+    ],
+    exposure: "private",
+    failureRelationshipPenalty: 10
+  },
+  {
+    npcId: "xu-zhu",
+    threatTier: "normal",
+    pocketSilver: 10,
+    pocketItems: [
+      { itemId: "tea-brick", count: 1 }
+    ],
+    exposure: "watched",
+    failureRelationshipPenalty: 10
+  },
+  {
+    npcId: "qiao-feng",
+    threatTier: "master",
+    pocketSilver: 54,
+    pocketItems: [
+      { itemId: "tea-brick", count: 1 },
+      { itemId: "silk-pouch", count: 1 }
+    ],
+    exposure: "crowded",
+    failureRelationshipPenalty: 18
+  }
+];
+
+function buildInitialEconomyState(): EconomyState {
+  return {
+    merchantStocks: Object.fromEntries(
+      merchantProfiles.map((profile) => [
+        profile.npcId,
+        Object.fromEntries(profile.stock.map((entry) => [entry.itemId, entry.count]))
+      ])
+    ),
+    merchantBlockedUntilDay: {},
+    stolenNpcState: {}
+  };
+}
 
 export const initialGameState: GameState = {
   setupComplete: false,
@@ -353,6 +476,7 @@ export const initialGameState: GameState = {
     "a-zhu": "hidden",
     "a-zi": "hidden",
     "mu-wanqing": "hidden",
+    "innkeeper": "available",
     "shuang-er": "hidden"
   },
   locations,
@@ -418,5 +542,6 @@ export const initialGameState: GameState = {
   combat: { active: false },
   systemLog: ["系统：首轮行动后才会正式派发第一条任务。"],
   sceneType: "inn",
+  economy: buildInitialEconomyState(),
   objective: { title: "入局引导", text: "先在客栈落脚，看看掌柜、双儿和无量山的风声。", location: "大理城" }
 };

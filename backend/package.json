@@ -1,0 +1,11 @@
+{
+  "name": "jianghu-dm-backend",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start:service": "node service/src/index.mjs",
+    "start:bridge": "node bridge/src/index.mjs",
+    "test": "node --test"
+  }
+}
+

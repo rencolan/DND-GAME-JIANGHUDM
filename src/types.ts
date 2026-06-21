@@ -11,6 +11,9 @@ export type LocationUnlockReason = "initial" | "quest" | "clue" | "npc";
 export type RelationshipTier = "stranger" | "familiar" | "trusted" | "confidant" | "devoted";
 export type RelationshipRouteKind = "bond" | "romance" | "retainer";
 export type RelationshipRouteStage = "unawakened" | "met" | "trust" | "partiality" | "follow" | "enduring";
+export type ThreatTier = "weak" | "normal" | "elite" | "master";
+export type ExposureTier = "private" | "watched" | "crowded";
+export type EconomyActionKind = "shop_list" | "buy" | "sell" | "steal";
 export type NamelessWandererChapterStage =
   | "tutorial_story"
   | "tutorial_combat"
@@ -55,10 +58,13 @@ export interface Item {
   name: string;
   desc: string;
   count: number;
-  type: "consumable" | "quest";
+  type: "consumable" | "quest" | "goods";
+  value: number;
   hpRestore?: number;
   qiRestore?: number;
   usable?: boolean;
+  canSell?: boolean;
+  canSteal?: boolean;
 }
 
 export interface Character {
@@ -71,6 +77,7 @@ export interface Character {
   qi: number;
   maxQi: number;
   ac: number;
+  silver: number;
   abilities: Ability[];
   martialArts: MartialArt[];
   inventory: Item[];
@@ -229,6 +236,82 @@ export interface AiProposalNpcReaction {
   note?: string;
 }
 
+export interface MerchantStockEntry {
+  itemId: string;
+  count: number;
+}
+
+export interface MerchantProfile {
+  npcId: string;
+  locationId: string;
+  stock: MerchantStockEntry[];
+  buyFromPlayerMultiplier: number;
+  sellToPlayerMultiplier: number;
+  greetingText?: string;
+}
+
+export interface StealPocketEntry {
+  itemId: string;
+  count: number;
+}
+
+export interface StealProfile {
+  npcId: string;
+  threatTier: ThreatTier;
+  pocketSilver: number;
+  pocketItems: StealPocketEntry[];
+  exposure?: ExposureTier;
+  failureRelationshipPenalty: number;
+  failureLocksTradeUntilNextDay?: boolean;
+  failureCombatEnemyId?: string;
+  enemyPresetId?: string;
+}
+
+export interface ProposedWorldAction {
+  kind: EconomyActionKind;
+  npcId?: string;
+  itemId?: string;
+  itemName?: string;
+  quantity?: number;
+  abilityKey?: string;
+  dc?: number;
+  rollMode?: RollMode;
+  reason?: string;
+}
+
+export interface PendingEconomyAction {
+  kind: "steal";
+  npcId: string;
+  npcName: string;
+  targetType: "silver" | "item";
+  itemId?: string;
+  itemName?: string;
+  quantity: number;
+  rewardSilver: number;
+  rewardItem?: Item;
+  threatTier: ThreatTier;
+  exposure: ExposureTier;
+  dc: number;
+  rollMode: RollMode;
+  reason: string;
+  failureRelationshipPenalty: number;
+  failureLocksTradeUntilNextDay?: boolean;
+  failureCombatEnemyId?: string;
+  fromMerchant?: boolean;
+}
+
+export interface StolenNpcStateEntry {
+  silverTaken: number;
+  itemCounts: Record<string, number>;
+}
+
+export interface EconomyState {
+  merchantStocks: Record<string, Record<string, number>>;
+  merchantBlockedUntilDay: Record<string, number>;
+  stolenNpcState: Record<string, StolenNpcStateEntry>;
+  pendingAction?: PendingEconomyAction;
+}
+
 export interface AiProposalPayload {
   systemNote?: string;
   sceneType?: SceneType;
@@ -236,6 +319,7 @@ export interface AiProposalPayload {
   proposedHooks?: AiProposalHook[];
   proposedRumors?: AiProposalHook[];
   proposedNpcReactions?: AiProposalNpcReaction[];
+  proposedWorldAction?: ProposedWorldAction;
 }
 
 export interface RelationshipRouteState {
@@ -277,6 +361,7 @@ export interface GameState {
   pendingDamage?: PendingDamage;
   innerInjury?: number;
   relationshipRoutes: Record<string, RelationshipRouteState>;
+  economy: EconomyState;
 }
 
 export interface GamePatch {
@@ -286,6 +371,7 @@ export interface GamePatch {
   qiRecovery?: number;
   innerInjuryChange?: number;
   acChange?: number;
+  silverChange?: number;
   abilityChanges?: Record<string, number>;
   location?: string;
   timeSlot?: string;
@@ -306,6 +392,18 @@ export interface GamePatch {
   };
   newItem?: Partial<Item>;
   removeItemId?: string;
+  itemChanges?: Array<{
+    itemId?: string;
+    name?: string;
+    delta: number;
+    item?: Partial<Item> & { name: string };
+  }>;
+  economyUpdate?: {
+    merchantStocks?: Record<string, Record<string, number>>;
+    merchantBlockedUntilDay?: Record<string, number>;
+    stolenNpcState?: Record<string, StolenNpcStateEntry>;
+    pendingAction?: PendingEconomyAction | null;
+  };
   relationshipChanges?: Array<{ npcId?: string; name?: string; delta?: number; value?: number; attitude?: string }>;
   npcUpdates?: Array<Partial<Npc> & { id?: string; name?: string }>;
   questUpdates?: Array<Partial<Quest> & { id?: string; title?: string }>;

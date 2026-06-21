@@ -18,6 +18,10 @@ type SystemTabProps = {
   musicEnabled: boolean;
   bgmVolume: number;
   setBgmVolume: (value: number) => void;
+  toggleSfx: () => void;
+  sfxEnabled: boolean;
+  sfxVolume: number;
+  setSfxVolume: (value: number) => void;
 };
 
 export function SystemTab({
@@ -33,7 +37,11 @@ export function SystemTab({
   toggleMusic,
   musicEnabled,
   bgmVolume,
-  setBgmVolume
+  setBgmVolume,
+  toggleSfx,
+  sfxEnabled,
+  sfxVolume,
+  setSfxVolume
 }: SystemTabProps) {
   return (
     <section className="system-panel">
@@ -102,7 +110,7 @@ export function SystemTab({
       <article className="system-section">
         <header>
           <b>存档管理</b>
-          <span>导入、导出或重新开局都放在这里。</span>
+          <span>导入、导出和重新开局都在这里。</span>
         </header>
 
         <section className="save-panel">
@@ -119,7 +127,7 @@ export function SystemTab({
             重新开局
           </button>
           <input ref={fileInputRef} type="file" accept="application/json" onChange={importSave} hidden />
-          <p>当前人物与世界状态会自动保存在本地浏览器里。</p>
+          <p>当前人物和世界状态会自动保存在本地浏览器里。</p>
         </section>
       </article>
 
@@ -146,6 +154,32 @@ export function SystemTab({
             />
           </label>
           <p>当前曲目：Seven Peaks at Twilight</p>
+        </section>
+      </article>
+
+      <article className="system-section">
+        <header>
+          <b>骰子音效</b>
+          <span>掷出和落定时会播放短促音效。</span>
+        </header>
+
+        <section className="save-panel">
+          <button type="button" onClick={toggleSfx}>
+            {sfxEnabled ? <Volume2 size={18} /> : <VolumeX size={18} />}
+            {sfxEnabled ? "关闭音效" : "开启音效"}
+          </button>
+          <label className="volume-control">
+            <span>音量</span>
+            <b>{sfxVolume}%</b>
+            <input
+              type="range"
+              min="0"
+              max="100"
+              step="1"
+              value={sfxVolume}
+              onChange={(event) => setSfxVolume(Number(event.target.value))}
+            />
+          </label>
         </section>
       </article>
     </section>
