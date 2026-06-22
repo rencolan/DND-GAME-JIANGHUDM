@@ -1,5 +1,6 @@
 import { enemyPresets, itemCatalog, merchantProfiles, stealProfiles } from "../../data";
 import { startCombat } from "../combat";
+import { abilityModifierFromList } from "../rules";
 import type {
   ExposureTier,
   GamePatch,
@@ -39,6 +40,30 @@ const EXPOSURE_MOD: Record<ExposureTier, number> = {
   watched: 2,
   crowded: 3
 };
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function charismaModifier(state: GameState) {
+  return abilityModifierFromList(state.character.abilities, "cha");
+}
+
+function tradeModifiers(state: GameState) {
+  const chaMod = charismaModifier(state);
+  const clampedBuyMod = clamp(chaMod, -5, 5);
+  const clampedSellMod = clamp(chaMod, -5, 5);
+  return {
+    buyFactor: 1 - (clampedBuyMod * 0.03),
+    sellFactor: 1 + (clampedSellMod * 0.02),
+    relationshipDelta: clamp(chaMod, -2, 2)
+  };
+}
+
+function merchantRelationshipChange(state: GameState, npcId: string) {
+  const delta = tradeModifiers(state).relationshipDelta;
+  return delta === 0 ? undefined : [{ npcId, delta }];
+}
 
 function currentLocationId(state: GameState) {
   return state.locations.find((location) => location.current)?.id;
@@ -193,7 +218,7 @@ function listMerchantGoods(state: GameState, profile: MerchantProfile) {
       const item = findItemByIdOrName(entry.itemId);
       const stock = merchantStock(state, profile, entry.itemId);
       if (!item || stock <= 0) return undefined;
-      const price = Math.round(item.value * profile.sellToPlayerMultiplier);
+      const price = Math.max(1, Math.round(item.value * profile.sellToPlayerMultiplier * tradeModifiers(state).buyFactor));
       return `${item.name} ×${stock} · ${price} 银`;
     })
     .filter((line): line is string => Boolean(line));
@@ -216,7 +241,7 @@ function buyItem(state: GameState, profile: MerchantProfile, item: Item | undefi
   if (stock < quantity) {
     return makeEconomyResolution("economy_buy_fail", {}, `${npc?.name || "掌柜"}摇头道：“${item.name}眼下只剩 ${stock} 份。”`);
   }
-  const price = Math.round(item.value * profile.sellToPlayerMultiplier);
+  const price = Math.max(1, Math.round(item.value * profile.sellToPlayerMultiplier * tradeModifiers(state).buyFactor));
   const totalPrice = price * quantity;
   if (state.character.silver < totalPrice) {
     return makeEconomyResolution("economy_buy_fail", {}, `你身上的银两不够，${item.name}要 ${totalPrice} 银。`);
@@ -226,6 +251,7 @@ function buyItem(state: GameState, profile: MerchantProfile, item: Item | undefi
     {
       silverChange: -totalPrice,
       itemChanges: [{ itemId: item.id, delta: quantity, item: cloneItem(item, quantity) }],
+      relationshipChanges: merchantRelationshipChange(state, profile.npcId),
       economyUpdate: {
         merchantStocks: {
           [profile.npcId]: {
@@ -252,12 +278,13 @@ function sellItem(state: GameState, profile: MerchantProfile, item: Item | undef
   if (owned.type === "quest" || owned.canSell === false) {
     return makeEconomyResolution("economy_sell_fail", {}, `${item.name}不是眼下能拿来脱手的东西。`);
   }
-  const totalPrice = Math.round(item.value * profile.buyFromPlayerMultiplier) * quantity;
+  const totalPrice = Math.max(1, Math.round(item.value * profile.buyFromPlayerMultiplier * tradeModifiers(state).sellFactor)) * quantity;
   return makeEconomyResolution(
     "economy_sell_success",
     {
       silverChange: totalPrice,
       itemChanges: [{ itemId: owned.id, delta: -quantity }],
+      relationshipChanges: merchantRelationshipChange(state, profile.npcId),
       systemNote: `出售 ${item.name} ×${quantity}，得银 ${totalPrice}。`
     },
     `你把 ${item.name} ×${quantity} 脱了手，换得 ${totalPrice} 银。`

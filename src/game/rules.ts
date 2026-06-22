@@ -26,25 +26,70 @@ export function calculateAcFromDex(dex: number) {
   return 10 + abilityModifier(dex);
 }
 
-export function calculateMaxQi(baseQi: number, wis: number) {
-  return Math.max(1, baseQi + abilityModifier(wis));
+export function calculateMaxQi(baseQi: number, wis: number, growthBonus = 0) {
+  return Math.max(1, baseQi + abilityModifier(wis) + growthBonus);
 }
 
 export function calculateMartialDamageBonus(abilities: Ability[] | undefined, art: MartialArt) {
   const baseBonus = art.damageBonus || 0;
-  const abilityBonus = art.category === "external"
-    ? Math.max(0, abilityModifierFromList(abilities, "str"))
-    : Math.max(0, abilityModifierFromList(abilities, "wis"));
+  const abilityBonus = Math.max(0, abilityModifierFromList(abilities, art.linkedAbility || "str"));
   return baseBonus + abilityBonus;
 }
 
-export function recalculateCharacterDerivedStats(character: Character, baseQi: number) {
+export type InnerInjuryTriggerKind =
+  | "external_crit"
+  | "internal_hit"
+  | "internal_crit"
+  | "training_failure"
+  | "internal_study_failure"
+  | "cultivation_failure";
+
+export function calculateInnerInjuryPressure(
+  attackerWis: number,
+  defenderCon: number,
+  triggerKind: InnerInjuryTriggerKind
+) {
+  const base = {
+    external_crit: 4,
+    internal_hit: 6,
+    internal_crit: 10,
+    training_failure: 8,
+    internal_study_failure: 7,
+    cultivation_failure: 9
+  }[triggerKind];
+
+  return base + abilityModifier(attackerWis) - abilityModifier(defenderCon);
+}
+
+export function resolveInnerInjuryDelta(pressure: number) {
+  if (pressure <= 4) return 0;
+  if (pressure <= 7) return 6;
+  if (pressure <= 10) return 10;
+  return 14;
+}
+
+export function injuryTickDamage(innerInjury = 0) {
+  if (innerInjury >= 80) return 4;
+  if (innerInjury >= 60) return 3;
+  if (innerInjury >= 40) return 2;
+  if (innerInjury >= 20) return 1;
+  return 0;
+}
+
+export function injuryTierLabel(innerInjury = 0) {
+  if (innerInjury >= 80) return "命悬";
+  if (innerInjury >= 60) return "伤重";
+  if (innerInjury >= 40) return "郁结";
+  return "轻伤";
+}
+
+export function recalculateCharacterDerivedStats(character: Character, baseQi: number, qiGrowthBonus = 0) {
   const con = abilityValue(character.abilities, "con");
   const dex = abilityValue(character.abilities, "dex");
   const wis = abilityValue(character.abilities, "wis");
   const maxHp = calculateHpFromCon(con);
   const hpMissing = Math.max(0, (character.maxHp || maxHp) - character.hp);
-  const maxQi = calculateMaxQi(baseQi, wis);
+  const maxQi = calculateMaxQi(baseQi, wis, qiGrowthBonus);
   const qiMissing = Math.max(0, (character.maxQi || maxQi) - character.qi);
 
   return {

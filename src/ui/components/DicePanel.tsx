@@ -56,6 +56,7 @@ export function DicePanel({
 }: DicePanelProps) {
   if (!diceOpen) return null;
 
+  const combatEscape = game.combat.active && currentCheck?.kind === "combat_escape";
   const recommendedAbilityKey = combatInitiative ? "dex" : currentCheck?.abilityKey;
   const recommendedAbility = game.character.abilities.find((ability) => ability.key === recommendedAbilityKey);
   const recommendedMod = recommendedAbility ? abilityModifier(recommendedAbility.value) : 0;
@@ -66,31 +67,35 @@ export function DicePanel({
   const summaryTitle = pendingDamage
     ? "伤害结算"
     : currentCheck
-      ? (combatInitiative ? "先攻判定" : combatAttack ? "攻击判定" : "当前判定")
-      : "试投 d20";
+      ? (combatInitiative ? "先攻判定" : combatEscape ? "逃脱判定" : combatAttack ? "攻击判定" : "当前判定")
+      : "试掷 d20";
   const summaryHeading = pendingDamage
     ? `${pendingDamage.label} · ${pendingDamageDice}${pendingDamage?.damageBonus ? ` +${pendingDamage.damageBonus}` : ""}`
     : currentCheck
       ? `${currentCheck.label} · DC ${currentCheck.dc}`
       : "没有待处理判定";
   const summaryText = pendingDamage
-    ? (pendingDamage.isCritical ? "暴击伤害已翻倍计算，现在直接掷真实伤害。" : "命中已确认，现在直接掷真实伤害。")
+    ? (pendingDamage.isCritical ? "暴击伤害已按翻倍骰计算，现在直接掷真实伤害。" : "命中已经确认，现在直接掷真实伤害。")
     : currentCheck
       ? (combatInitiative
         ? "本轮先攻固定使用身法判定。"
-        : combatAttack
-          ? "先做命中判定，命中后再进入伤害结算。"
-          : pendingCheckReason || currentCheck.reason)
-      : "这里只做一次普通 d20 试投，不推进状态，也不会写入结果。";
+        : combatEscape
+          ? (pendingCheckReason || currentCheck.reason)
+          : combatAttack
+            ? "先做命中判定，命中后再进入伤害结算。"
+            : pendingCheckReason || currentCheck.reason)
+      : "这里只做一次普通 d20 试掷，不推进状态，也不会写入结果。";
   const summaryDetail = pendingDamage
-    ? (pendingDamage.qiCost ? `命中后消耗内力 ${pendingDamage.qiCost}` : undefined)
+    ? (pendingDamage.qiCost ? `命中后耗气 ${pendingDamage.qiCost}` : undefined)
     : currentCheck
       ? (
-        targetedMartialArt
-          ? `当前挂钩武学：${targetedMartialArt.name}`
-          : recommendedAbility
-            ? `当前属性：${recommendedAbility.label}`
-            : undefined
+        combatEscape
+          ? (recommendedAbility ? `当前属性：${recommendedAbility.label}` : undefined)
+          : targetedMartialArt
+            ? `当前挂钩武学：${targetedMartialArt.name}`
+            : recommendedAbility
+              ? `当前属性：${recommendedAbility.label}`
+              : undefined
       )
       : "默认只做常规判定";
   const summaryNote = currentCheck?.suggestedAction || currentCheck?.risk || currentCheck?.enemyIntent;
@@ -166,6 +171,17 @@ export function DicePanel({
                 </span>
                 <b>{recommendedMod >= 0 ? "+" : ""}{recommendedMod}</b>
               </button>
+            ) : combatEscape ? (
+              <button
+                className="martial-roll recommended"
+                onClick={() => rollDice(trialLabel, recommendedMod, currentCheck, { sendToDm: Boolean(currentCheck) })}
+              >
+                <span>
+                  <strong>{recommendedAbility?.label || trialLabel}</strong>
+                  <small>{currentCheck ? `${currentModeLabel} · d20 检定` : "试掷 · 1d20"}</small>
+                </span>
+                <b>{recommendedMod >= 0 ? "+" : ""}{recommendedMod}</b>
+              </button>
             ) : combatAttack ? (
               game.character.martialArts.map((art) => {
                 const ability = game.character.abilities.find((entry) => entry.key === art.linkedAbility);
@@ -199,13 +215,13 @@ export function DicePanel({
                 >
                   <span>
                     <strong>{recommendedAbility?.label || trialLabel}</strong>
-                    <small>{currentCheck ? `${currentModeLabel} · d20 检定` : "试投 · 1d20"}</small>
+                    <small>{currentCheck ? `${currentModeLabel} · d20 检定` : "试掷 · 1d20"}</small>
                   </span>
                   <b>{recommendedMod >= 0 ? "+" : ""}{recommendedMod}</b>
                 </button>
 
                 {game.character.martialArts.length > 0 && (
-                  <div className="dice-inline-note">也可以直接按招式试投</div>
+                  <div className="dice-inline-note">也可以直接按招式试掷</div>
                 )}
 
                 {game.character.martialArts.map((art) => {

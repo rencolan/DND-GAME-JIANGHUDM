@@ -1,10 +1,16 @@
 export type MessageRole = "dm" | "player" | "dice" | "system";
 export type DrawerTab = "character" | "inventory" | "party" | "map" | "system";
 export type RollMode = "normal" | "advantage" | "disadvantage";
+export type PendingCheckKind = "world" | "initiative" | "combat_attack" | "combat_escape";
 export type CreationMode = "origin";
 export type SceneType = "temple" | "market" | "tavern" | "brothel" | "inn" | "palace";
 export type ApiProvider = "openai" | "deepseek" | "custom";
 export type MartialCategory = "external" | "internal";
+export type StudySourceKind = "manual" | "teaching" | "onsite";
+export type StudyStage = "discovered" | "studying" | "mastered";
+export type StudyTier = "starter" | "advanced" | "mid" | "upper_prelude" | "high_chance";
+export type StudyRouteKey = "str" | "dex" | "int" | "wis";
+export type StudyAccessLevel = "hint" | "study" | "manual";
 export type CombatPhase = "opening" | "awaiting_hit_check" | "awaiting_damage_roll" | "resolving_enemy_response" | "ended";
 export type NpcStoryState = "hidden" | "rumored" | "revealed" | "available" | "companion" | "departed";
 export type LocationUnlockReason = "initial" | "quest" | "clue" | "npc";
@@ -53,18 +59,80 @@ export interface MartialArt {
   source: string;
 }
 
+export interface FortuneGate {
+  minChaMod?: number;
+  revealBonus?: number;
+  upgradeOnSuccess?: boolean;
+}
+
+export interface StudyEntry {
+  id: string;
+  artId: string;
+  name: string;
+  category: MartialCategory;
+  linkedAbility: string;
+  sourceKind: StudySourceKind;
+  stage: StudyStage;
+  progress: number;
+  requiredProgress: number;
+  dangerous?: boolean;
+  sourceLabel?: string;
+  locationId?: string;
+  tier?: StudyTier;
+  routeKey?: StudyRouteKey;
+  accessLevel?: StudyAccessLevel;
+  hidden?: boolean;
+  fortuneGate?: FortuneGate;
+}
+
+export interface StudySourceState {
+  id: string;
+  locationId: string;
+  artId: string;
+  name: string;
+  discovered: boolean;
+  portable: boolean;
+  dangerous?: boolean;
+  sourceLabel?: string;
+  cooldownUntilActionCount?: number;
+  requiresSceneRefresh?: boolean;
+  refreshedSinceFailure?: boolean;
+  tier?: StudyTier;
+  routeKey?: StudyRouteKey;
+  accessLevel?: StudyAccessLevel;
+  hidden?: boolean;
+  requiredProgress?: number;
+  fortuneGate?: FortuneGate;
+}
+
+export interface AttributeInsight {
+  id: string;
+  choices: string[];
+  reason?: string;
+}
+
 export interface Item {
   id: string;
   name: string;
   desc: string;
   count: number;
-  type: "consumable" | "quest" | "goods";
+  type: "consumable" | "quest" | "goods" | "manual";
   value: number;
   hpRestore?: number;
   qiRestore?: number;
+  innerInjuryRestore?: number;
   usable?: boolean;
   canSell?: boolean;
   canSteal?: boolean;
+  manualArtId?: string;
+  studySourceKind?: StudySourceKind;
+  dangerous?: boolean;
+  tier?: StudyTier;
+  routeKey?: StudyRouteKey;
+  accessLevel?: StudyAccessLevel;
+  hidden?: boolean;
+  requiredProgress?: number;
+  fortuneGate?: FortuneGate;
 }
 
 export interface Character {
@@ -168,6 +236,7 @@ export interface Rumor {
 
 export interface PendingCheck {
   id: string;
+  kind?: PendingCheckKind;
   label: string;
   abilityKey?: string;
   martialArtId?: string;
@@ -211,6 +280,7 @@ export interface CombatState {
   enemyAc?: number;
   enemyAbilities?: Ability[];
   enemyMartialArts?: MartialArt[];
+  enemyInnerInjury?: number;
   enemyStatus?: string[];
 }
 
@@ -360,6 +430,12 @@ export interface GameState {
   pendingCheck?: PendingCheck;
   pendingDamage?: PendingDamage;
   innerInjury?: number;
+  pendingStudies: StudyEntry[];
+  studySources: StudySourceState[];
+  qiGrowthBonus: number;
+  qiBreakthroughCap: number;
+  qiTrainingProgress: number;
+  availableAttributeInsights: AttributeInsight[];
   relationshipRoutes: Record<string, RelationshipRouteState>;
   economy: EconomyState;
 }
@@ -368,6 +444,9 @@ export interface GamePatch {
   hpChange?: number;
   qiChange?: number;
   qiMaxChange?: number;
+  qiGrowthBonusChange?: number;
+  qiBreakthroughCapChange?: number;
+  qiTrainingProgressChange?: number;
   qiRecovery?: number;
   innerInjuryChange?: number;
   acChange?: number;
@@ -382,6 +461,7 @@ export interface GamePatch {
     enemyHpChange?: number;
     enemyQiChange?: number;
     enemyAcChange?: number;
+    enemyInnerInjuryChange?: number;
     enemyStatusAdd?: string[];
     enemyStatusRemove?: string[];
     enemyMartialArtUsed?: string;
@@ -414,6 +494,13 @@ export interface GamePatch {
   pendingDamage?: Partial<PendingDamage> & { martialArtId: string; label: string; damageDice: string; hitText: string };
   martialArtLearned?: Partial<MartialArt> & { name: string };
   martialArtUpdates?: Array<Partial<MartialArt> & { id?: string; name?: string }>;
+  studyAdd?: StudyEntry[];
+  studyUpdate?: Array<Partial<StudyEntry> & { id: string }>;
+  studyRemoveIds?: string[];
+  studySourceAdd?: StudySourceState[];
+  studySourceUpdate?: Array<Partial<StudySourceState> & { id: string }>;
+  attributeInsightAdd?: AttributeInsight[];
+  attributeInsightRemoveIds?: string[];
   chapterStateUpdate?: Partial<ChapterState>;
   storyFlagsAdd?: string[];
   storyFlagsRemove?: string[];

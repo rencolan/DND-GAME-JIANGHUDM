@@ -111,6 +111,12 @@ export function GameScreen({ session }: GameScreenProps) {
     switchScene,
     travelToLocation,
     useItem,
+    studyManual,
+    practicePendingArt,
+    practiceOnsiteSource,
+    cultivateQi,
+    meditateRecovery,
+    claimAttributeInsight,
     rollDice,
     rollDamageDice
   } = session;
@@ -131,8 +137,9 @@ export function GameScreen({ session }: GameScreenProps) {
   const tutorialStoryActive = tutorialActive && !tutorialCombatActive;
   const currentCheck = game.pendingCheck;
   const pendingDamage = game.pendingDamage;
+  const combatEscape = game.combat.active && currentCheck?.kind === "combat_escape";
   const combatInitiative = game.combat.active && game.combat.phase === "opening";
-  const combatAttack = game.combat.active && game.combat.phase === "awaiting_hit_check";
+  const combatAttack = game.combat.active && game.combat.phase === "awaiting_hit_check" && !combatEscape;
   const awaitingDamage = Boolean(pendingDamage);
   const controlsBlocked = uiLocked || Boolean(session.rolling);
   const pendingDamageDice = pendingDamage
@@ -146,6 +153,15 @@ export function GameScreen({ session }: GameScreenProps) {
       : currentCheck?.reason;
   const pendingCheckAction = combatInitiative ? "掷先攻" : combatAttack ? "掷攻击" : "进行判定";
   const effectivePendingCheckReason = pendingCheckReason || currentCheck?.reason;
+  const displayPendingCheckTag = combatInitiative ? "待先攻" : combatEscape ? "待逃脱" : combatAttack ? "待攻击" : "待判定";
+  const displayPendingCheckReason = combatInitiative
+    ? "本轮先攻固定使用身法判定。"
+    : combatEscape
+      ? currentCheck?.reason
+      : combatAttack
+        ? "先命中，后伤害。"
+        : effectivePendingCheckReason;
+  const displayPendingCheckAction = combatInitiative ? "掷先攻" : combatEscape ? "掷逃跑" : combatAttack ? "掷攻击" : "进行判定";
   const latestCombatSummary = useMemo(() => readLatestCombatSummary(game.messages), [game.messages]);
   const [visibleCombatSummary, setVisibleCombatSummary] = useState<CombatHudSummary | undefined>(undefined);
 
@@ -175,7 +191,7 @@ export function GameScreen({ session }: GameScreenProps) {
   const actionHint = pendingDamage
     ? "命中已确认，下一步直接掷伤害。"
     : currentCheck
-      ? `${rollModeLabel(currentCheck.rollMode)} · ${effectivePendingCheckReason}`
+      ? `${rollModeLabel(currentCheck.rollMode)} · ${displayPendingCheckReason}`
       : undefined;
   const hudButton = pendingDamage
     ? { label: "掷伤害", onClick: openPendingCheck }
@@ -192,7 +208,7 @@ export function GameScreen({ session }: GameScreenProps) {
     : actionSummary
       ? {
         kind: "prompt" as const,
-        kicker: pendingDamage ? "待伤害" : pendingCheckTag,
+        kicker: pendingDamage ? "待伤害" : displayPendingCheckTag,
         headline: actionSummary,
         detail: actionHint
       }
@@ -220,6 +236,12 @@ export function GameScreen({ session }: GameScreenProps) {
         selectedAbilityInfoKey={selectedAbilityInfoKey}
         setSelectedAbilityInfoKey={setSelectedAbilityInfoKey}
         activeRelationshipNpcs={activeRelationshipNpcs}
+        studyManual={studyManual}
+        practicePendingArt={practicePendingArt}
+        practiceOnsiteSource={practiceOnsiteSource}
+        cultivateQi={cultivateQi}
+        meditateRecovery={meditateRecovery}
+        claimAttributeInsight={claimAttributeInsight}
       />
     );
   } else if (activeTab === "inventory") {
@@ -306,9 +328,9 @@ export function GameScreen({ session }: GameScreenProps) {
             currentCheck={currentCheck}
             pendingDamage={pendingDamage}
             pendingDamageDice={pendingDamageDice}
-            pendingCheckTag={pendingCheckTag}
-            pendingCheckReason={effectivePendingCheckReason}
-            pendingCheckAction={pendingCheckAction}
+            pendingCheckTag={displayPendingCheckTag}
+            pendingCheckReason={displayPendingCheckReason}
+            pendingCheckAction={displayPendingCheckAction}
             onOpenPendingCheck={openPendingCheck}
             combatActive={false}
           />
@@ -355,7 +377,7 @@ export function GameScreen({ session }: GameScreenProps) {
         currentCheck={currentCheck}
         combatInitiative={combatInitiative}
         combatAttack={combatAttack}
-        pendingCheckReason={effectivePendingCheckReason}
+        pendingCheckReason={displayPendingCheckReason}
         game={game}
         qiInvest={qiInvest}
         setQiInvest={setQiInvest}

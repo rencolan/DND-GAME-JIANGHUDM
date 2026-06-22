@@ -18,6 +18,15 @@ export function mergeGamePatches(...patches: Array<GamePatch | undefined>): Game
     if (patch.hpChange !== undefined) merged.hpChange = (merged.hpChange || 0) + patch.hpChange;
     if (patch.qiChange !== undefined) merged.qiChange = (merged.qiChange || 0) + patch.qiChange;
     if (patch.qiMaxChange !== undefined) merged.qiMaxChange = (merged.qiMaxChange || 0) + patch.qiMaxChange;
+    if (patch.qiGrowthBonusChange !== undefined) {
+      merged.qiGrowthBonusChange = (merged.qiGrowthBonusChange || 0) + patch.qiGrowthBonusChange;
+    }
+    if (patch.qiBreakthroughCapChange !== undefined) {
+      merged.qiBreakthroughCapChange = (merged.qiBreakthroughCapChange || 0) + patch.qiBreakthroughCapChange;
+    }
+    if (patch.qiTrainingProgressChange !== undefined) {
+      merged.qiTrainingProgressChange = (merged.qiTrainingProgressChange || 0) + patch.qiTrainingProgressChange;
+    }
     if (patch.qiRecovery !== undefined) merged.qiRecovery = (merged.qiRecovery || 0) + patch.qiRecovery;
     if (patch.innerInjuryChange !== undefined) merged.innerInjuryChange = (merged.innerInjuryChange || 0) + patch.innerInjuryChange;
     if (patch.acChange !== undefined) merged.acChange = (merged.acChange || 0) + patch.acChange;
@@ -28,7 +37,12 @@ export function mergeGamePatches(...patches: Array<GamePatch | undefined>): Game
     if (patch.chapter !== undefined) merged.chapter = patch.chapter;
     if (patch.combatAction !== undefined) merged.combatAction = patch.combatAction;
     if (patch.enemyName !== undefined) merged.enemyName = patch.enemyName;
-    if (patch.combatUpdate) merged.combatUpdate = { ...(merged.combatUpdate || {}), ...patch.combatUpdate };
+    if (patch.combatUpdate) {
+      merged.combatUpdate = { ...(merged.combatUpdate || {}), ...patch.combatUpdate };
+      if (patch.combatUpdate.enemyInnerInjuryChange !== undefined) {
+        merged.combatUpdate.enemyInnerInjuryChange = (merged.combatUpdate.enemyInnerInjuryChange || 0) + patch.combatUpdate.enemyInnerInjuryChange;
+      }
+    }
     if (patch.newItem !== undefined) merged.newItem = patch.newItem;
     if (patch.removeItemId !== undefined) merged.removeItemId = patch.removeItemId;
     if (patch.itemChanges) merged.itemChanges = [...(merged.itemChanges || []), ...patch.itemChanges];
@@ -63,6 +77,17 @@ export function mergeGamePatches(...patches: Array<GamePatch | undefined>): Game
     if ("pendingDamage" in patch) merged.pendingDamage = patch.pendingDamage;
     if (patch.martialArtLearned !== undefined) merged.martialArtLearned = patch.martialArtLearned;
     if (patch.martialArtUpdates) merged.martialArtUpdates = [...(merged.martialArtUpdates || []), ...patch.martialArtUpdates];
+    if (patch.studyAdd) merged.studyAdd = [...(merged.studyAdd || []), ...patch.studyAdd];
+    if (patch.studyUpdate) merged.studyUpdate = [...(merged.studyUpdate || []), ...patch.studyUpdate];
+    if (patch.studyRemoveIds) merged.studyRemoveIds = [...(merged.studyRemoveIds || []), ...patch.studyRemoveIds];
+    if (patch.studySourceAdd) merged.studySourceAdd = [...(merged.studySourceAdd || []), ...patch.studySourceAdd];
+    if (patch.studySourceUpdate) merged.studySourceUpdate = [...(merged.studySourceUpdate || []), ...patch.studySourceUpdate];
+    if (patch.attributeInsightAdd) {
+      merged.attributeInsightAdd = [...(merged.attributeInsightAdd || []), ...patch.attributeInsightAdd];
+    }
+    if (patch.attributeInsightRemoveIds) {
+      merged.attributeInsightRemoveIds = [...(merged.attributeInsightRemoveIds || []), ...patch.attributeInsightRemoveIds];
+    }
     if (patch.chapterStateUpdate) merged.chapterStateUpdate = { ...(merged.chapterStateUpdate || {}), ...patch.chapterStateUpdate };
     if (patch.storyFlagsAdd) merged.storyFlagsAdd = [...(merged.storyFlagsAdd || []), ...patch.storyFlagsAdd];
     if (patch.storyFlagsRemove) merged.storyFlagsRemove = [...(merged.storyFlagsRemove || []), ...patch.storyFlagsRemove];

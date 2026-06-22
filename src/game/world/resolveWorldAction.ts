@@ -1,15 +1,19 @@
 import { originTemplates } from "../../data";
 import {
+  buildCombatEscapeCheck,
   prepareCombatDamageRoll,
   resolveCombatDamage,
+  resolveCombatEscape,
   resolveCombatHit,
   resolveCombatInitiative,
   resolveEnemyTurn,
   startCombat
 } from "../combat";
 import type { EnemyTurnResult } from "../combat";
-import { advanceWorldLocally, mergeGamePatches } from "../engine";
+import { advanceWorldLocally, applyPatchToState, mergeGamePatches } from "../engine";
+import { abilityValue, calculateInnerInjuryPressure, resolveInnerInjuryDelta } from "../rules";
 import {
+  buildNamelessTutorialCompletionPatch,
   buildNamelessTutorialObjective,
   isNamelessTutorialCombatStage,
   QUEST_WANDERER_1,
@@ -24,6 +28,7 @@ import type { GamePatch, GameState, MartialArt, ProposedWorldAction } from "../.
 import { resolveEconomyCheckResult, tryResolveEconomyAction } from "./economySystem";
 import {
   buildCombatActionCheck,
+  buildCombatEscapePromptText,
   buildShuangErSupportPatch,
   buildSuggestedCheck,
   currentLocationId,
@@ -33,6 +38,7 @@ import {
   hasQuestStatus,
   hasStoryFlag,
   includesAny,
+  isEscapeCombatAction,
   parseCombatDamageResult,
   parseCombatHitResult,
   routeStage
@@ -65,6 +71,9 @@ export type WorldTextId =
   | "combat_hit_end"
   | "combat_hit_success"
   | "combat_hit_fail"
+  | "combat_escape_prompt"
+  | "combat_escape_success"
+  | "combat_escape_fail"
   | "combat_named_start"
   | "combat_generic_start"
   | "suggested_check"
@@ -100,9 +109,56 @@ export type WorldResolution = {
 };
 
 const TRAVEL_COMMAND = /^前往[“"]?(.+?)[”"]?$/;
+const TRAINING_LABEL = "练功运转";
+const MEDITATION_LABEL = "调息疗伤";
+const TRAINING_KEYWORDS = ["练功", "打坐", "运功", "冲关", "强练"];
+const MEDITATION_KEYWORDS = ["调息", "运气疗伤", "静坐疗伤"];
+const INN_REST_KEYWORDS = ["休息", "住店", "歇一晚"];
 
 function withWorldPatch(state: GameState, globalUpdate: boolean, ...patches: Array<GamePatch | undefined>): GamePatch {
   return mergeGamePatches(advanceWorldLocally(state, globalUpdate), ...patches);
+}
+
+function buildPendingCheckPrompt(
+  label: string,
+  abilityLabel: string,
+  dc: number,
+  rollMode: "normal" | "advantage" | "disadvantage" = "normal"
+) {
+  const modeText = rollMode === "advantage" ? "2d20 取高" : rollMode === "disadvantage" ? "2d20 取低" : "1d20";
+  return `${label}需要先做一次${abilityLabel}判定，DC ${dc}。请掷 ${modeText}，再加 ${abilityLabel}。`;
+}
+
+function findMartialArtInAction(state: GameState, action: string) {
+  return state.character.martialArts.find((art) => action.includes(art.name));
+}
+
+function isInternalTrainingAction(action: string) {
+  return includesAny(action, ["内功", "内劲", "吐纳", "运转内功", "冲关", "周天"]);
+}
+
+function isTechniqueTrainingAction(action: string) {
+  return includesAny(action, ["演练", "拆招", "揣摩", "琢磨", "手法", "招式", "认穴"]);
+}
+
+function resolveTrainingAbilityKey(action: string, art?: MartialArt) {
+  if (art?.category === "internal" || art?.linkedAbility === "wis" || isInternalTrainingAction(action)) return "wis";
+  if (art?.linkedAbility === "int" || isTechniqueTrainingAction(action)) return "int";
+  return "int";
+}
+
+function trainingAbilityLabel(abilityKey: "int" | "wis") {
+  return abilityKey === "wis" ? "心境" : "悟性";
+}
+
+function trainingFailureDelta(state: GameState) {
+  return resolveInnerInjuryDelta(
+    calculateInnerInjuryPressure(
+      abilityValue(state.character.abilities, "wis"),
+      abilityValue(state.character.abilities, "con"),
+      "training_failure"
+    )
+  );
 }
 
 function resolveStoryPatch(
@@ -161,8 +217,13 @@ function buildOriginOpeningPatch(state: GameState): GamePatch | undefined {
   };
 }
 
-function resolvePendingStoryCheck(state: GameState, globalUpdate: boolean, success: boolean): WorldResolution {
+function resolvePendingStoryCheck(
+  state: GameState,
+  globalUpdate: boolean,
+  hit: ReturnType<typeof parseCombatHitResult>
+): WorldResolution {
   const label = state.pendingCheck?.label;
+  const success = hit.success;
 
   if (label === "替客栈压住前堂乱局") {
     return {
@@ -206,6 +267,62 @@ function resolvePendingStoryCheck(state: GameState, globalUpdate: boolean, succe
     };
   }
 
+  if (label === TRAINING_LABEL) {
+    const art = state.character.martialArts.find((entry) => entry.id === state.pendingCheck?.martialArtId);
+    if (success) {
+      const strongSuccess = hit.total >= hit.dc + 5;
+      return {
+        textId: "default_scene",
+        textOverride: art
+          ? `${art.name}这一轮运转得还算顺，真气渐渐归拢，周身气息也稳了下来。`
+          : "你稳稳运转周天，气息渐渐归拢，练功总算没走岔。",
+        patch: withWorldPatch(state, globalUpdate, {
+          pendingCheck: undefined,
+          qiRecovery: strongSuccess ? 2 : 1,
+          innerInjuryChange: art?.category === "internal" ? -2 : 0
+        })
+      };
+    }
+
+    return {
+      textId: "default_scene",
+      textOverride: art
+        ? `${art.name}这一轮运转得太急，真气倒卷，经脉被震得生疼。`
+        : "你这一轮运气过急，真气倒卷，经脉立刻被冲得发麻。",
+      patch: withWorldPatch(state, globalUpdate, {
+        pendingCheck: undefined,
+        innerInjuryChange: trainingFailureDelta(state),
+        qiChange: hit.total <= hit.dc - 5 ? -1 : 0
+      })
+    };
+  }
+
+  if (label === MEDITATION_LABEL) {
+    if (success) {
+      const strongSuccess = hit.total >= hit.dc + 5;
+      return {
+        textId: "default_scene",
+        textOverride: strongSuccess
+          ? "你这一次调息极稳，淤滞之气被慢慢化开，胸腹间的闷痛也跟着散下去。"
+          : "你把呼吸慢慢压稳，伤处的逆气总算被捋顺了一截。",
+        patch: withWorldPatch(state, globalUpdate, {
+          pendingCheck: undefined,
+          qiRecovery: strongSuccess ? 2 : 1,
+          innerInjuryChange: strongSuccess ? -12 : -8
+        })
+      };
+    }
+
+    return {
+      textId: "default_scene",
+      textOverride: "你试着调匀气息，虽没能真正化开伤势，好歹把呼吸稳住了一些。",
+      patch: withWorldPatch(state, globalUpdate, {
+        pendingCheck: undefined,
+        qiRecovery: 1
+      })
+    };
+  }
+
   return {
     textId: success ? "story_check_generic_success" : "story_check_generic_fail",
     patch: withWorldPatch(state, globalUpdate, { pendingCheck: undefined })
@@ -219,6 +336,83 @@ function isAmbushAction(action: string) {
 function findMartialArtFromHitLabel(state: GameState, label?: string): MartialArt | undefined {
   if (!label) return undefined;
   return state.character.martialArts.find((art) => label.includes(art.name));
+}
+
+function maybeHandleRecoveryOrTraining(
+  state: GameState,
+  action: string,
+  globalUpdate: boolean,
+  firstActionPatch?: GamePatch
+): WorldResolution | undefined {
+  if (state.combat.active) return undefined;
+
+  if (includesAny(action, TRAINING_KEYWORDS)) {
+    const art = findMartialArtInAction(state, action);
+    const abilityKey = resolveTrainingAbilityKey(action, art);
+    const abilityLabel = trainingAbilityLabel(abilityKey);
+    const check = {
+      kind: "world" as const,
+      label: TRAINING_LABEL,
+      abilityKey,
+      martialArtId: art?.id,
+      dc: abilityKey === "wis" ? 13 : 12,
+      reason: art
+        ? abilityKey === "wis"
+          ? `你想借 ${art.name} 运转气机，这一步得先看心神和真气能不能稳住。`
+          : `你想借 ${art.name} 揣摩招路，这一步得先看悟性够不够把门路理顺。`
+        : abilityKey === "wis"
+          ? "你想强行运转周天，这一步得先看心神和真气能不能稳住。"
+          : "你想把招式门路重新理清，这一步得先看悟性能不能把手法吃透。",
+      risk: abilityKey === "wis"
+        ? "若走岔了气，经脉会先受冲击。"
+        : "若练偏了招路，你只会越练越乱，白白费神。"
+    };
+    return {
+      textId: "default_scene",
+      textOverride: buildPendingCheckPrompt(TRAINING_LABEL, abilityLabel, check.dc),
+      patch: withWorldPatch(state, globalUpdate, firstActionPatch, { pendingCheck: check })
+    };
+  }
+
+  if (includesAny(action, MEDITATION_KEYWORDS)) {
+    const check = {
+      kind: "world" as const,
+      label: MEDITATION_LABEL,
+      abilityKey: "wis",
+      dc: 11,
+      reason: "你想先稳住逆冲的气息，把内伤压下去一点。",
+      risk: "若调息不稳，只能勉强缓一口气。"
+    };
+    return {
+      textId: "default_scene",
+      textOverride: buildPendingCheckPrompt(MEDITATION_LABEL, "心境", check.dc),
+      patch: withWorldPatch(state, globalUpdate, firstActionPatch, { pendingCheck: check })
+    };
+  }
+
+  if (state.sceneType === "inn" && includesAny(action, INN_REST_KEYWORDS)) {
+    if (state.character.silver < 10) {
+      return {
+        textId: "default_scene",
+        textOverride: "你想在客栈歇一晚，可眼下银两不够，掌柜不会赊账。",
+        patch: withWorldPatch(state, globalUpdate, firstActionPatch, { pendingCheck: undefined })
+      };
+    }
+
+    return {
+      textId: "default_scene",
+      textOverride: "你在客栈安稳歇下，热水、热饭和一夜静养总算把伤势压住了一些。",
+      patch: withWorldPatch(state, globalUpdate, firstActionPatch, {
+        pendingCheck: undefined,
+        silverChange: -10,
+        hpChange: 6,
+        qiRecovery: 2,
+        innerInjuryChange: -10
+      })
+    };
+  }
+
+  return undefined;
 }
 
 function maybeStartMainlineChecks(state: GameState, action: string, globalUpdate: boolean, firstActionPatch?: GamePatch): WorldResolution | undefined {
@@ -408,6 +602,25 @@ export function resolveWorldAction(
     : buildOriginOpeningPatch(state);
 
   if (
+    state.combat.active
+    && state.combat.phase === "awaiting_hit_check"
+    && state.pendingCheck?.kind !== "combat_escape"
+    && isEscapeCombatAction(action)
+    && Number.isNaN(hit.total)
+    && Number.isNaN(damage.total)
+  ) {
+    const escapeCheck = buildCombatEscapeCheck(state, action);
+    if (escapeCheck) {
+      return {
+        textId: "combat_escape_prompt",
+        patch: withWorldPatch(state, globalUpdate, { pendingCheck: escapeCheck }),
+        meta: { enemyName: state.combat.enemy, locationName: currentLocationName(state) },
+        textOverride: buildCombatEscapePromptText(state, escapeCheck)
+      };
+    }
+  }
+
+  if (
     state.combat.active &&
     state.pendingCheck &&
     Number.isNaN(hit.total) &&
@@ -426,6 +639,7 @@ export function resolveWorldAction(
 
   if (state.combat.active && state.pendingDamage && !Number.isNaN(damage.total)) {
     const playerPatch = resolveCombatDamage(state, damage);
+    const updatedCombatState = applyPatchToState(state, playerPatch);
     if (playerPatch.combatAction === "exit") {
       const storyPatch = namelessStory
         ? resolveNamelessStoryTrigger(state, { kind: "combat_win", enemyName: state.combat.enemy })
@@ -437,7 +651,26 @@ export function resolveWorldAction(
       };
     }
 
-    const enemyTurn = resolveEnemyTurn(state);
+    const enemyTurn = resolveEnemyTurn(updatedCombatState);
+    if (enemyTurn.defeated) {
+      const storyPatch = namelessStory
+        ? resolveNamelessStoryTrigger(updatedCombatState, { kind: "combat_win", enemyName: state.combat.enemy })
+        : undefined;
+      return {
+        textId: "default_scene",
+        textOverride: enemyTurn.summary,
+        patch: withWorldPatch(state, globalUpdate, playerPatch, enemyTurn.patch, storyPatch),
+        meta: {
+          enemyName: state.combat.enemy,
+          enemyTurnSummary: enemyTurn.summary,
+          locationName: currentLocationName(state)
+        },
+        combatFlow: {
+          playerPatch,
+          enemyTurn
+        }
+      };
+    }
     return {
       textId: "combat_damage_continue",
       patch: withWorldPatch(
@@ -459,6 +692,72 @@ export function resolveWorldAction(
     };
   }
 
+  if (
+    state.combat.active
+    && state.pendingCheck?.kind === "combat_escape"
+    && !Number.isNaN(hit.total)
+    && !Number.isNaN(hit.dc)
+  ) {
+    if (hit.success) {
+      const escapePatch = tutorialStage
+        ? buildNamelessTutorialCompletionPatch("skipped")
+        : resolveCombatEscape(state, hit);
+      return {
+        textId: "combat_escape_success",
+        patch: withWorldPatch(state, globalUpdate, escapePatch),
+        meta: { enemyName: state.combat.enemy, locationName: currentLocationName(state) }
+      };
+    }
+
+    const escapePatch = resolveCombatEscape(state, hit);
+    const enemyTurn = resolveEnemyTurn(state);
+    if (enemyTurn.defeated) {
+      const storyPatch = namelessStory
+        ? resolveNamelessStoryTrigger(state, { kind: "combat_win", enemyName: state.combat.enemy })
+        : undefined;
+      return {
+        textId: "default_scene",
+        textOverride: enemyTurn.summary,
+        patch: withWorldPatch(
+          state,
+          globalUpdate,
+          escapePatch,
+          enemyTurn.patch,
+          storyPatch,
+          tutorialStage ? { objectiveUpdate: buildNamelessTutorialObjective("repeat") } : undefined
+        ),
+        meta: {
+          enemyName: state.combat.enemy,
+          enemyTurnSummary: enemyTurn.summary,
+          locationName: currentLocationName(state)
+        },
+        combatFlow: {
+          playerPatch: escapePatch,
+          enemyTurn
+        }
+      };
+    }
+    return {
+      textId: "combat_escape_fail",
+      patch: withWorldPatch(
+        state,
+        globalUpdate,
+        escapePatch,
+        enemyTurn.patch,
+        tutorialStage ? { objectiveUpdate: buildNamelessTutorialObjective("repeat") } : undefined
+      ),
+      meta: {
+        enemyName: state.combat.enemy,
+        enemyTurnSummary: enemyTurn.summary,
+        locationName: currentLocationName(state)
+      },
+      combatFlow: {
+        playerPatch: escapePatch,
+        enemyTurn
+      }
+    };
+  }
+
   if (state.combat.active && !Number.isNaN(hit.total) && !Number.isNaN(hit.dc) && state.combat.phase === "opening") {
     const initiativePatch = resolveCombatInitiative(state, hit);
     if (hit.success) {
@@ -475,6 +774,32 @@ export function resolveWorldAction(
     }
 
     const enemyTurn = resolveEnemyTurn(state, false);
+    if (enemyTurn.defeated) {
+      const storyPatch = namelessStory
+        ? resolveNamelessStoryTrigger(state, { kind: "combat_win", enemyName: state.combat.enemy })
+        : undefined;
+      return {
+        textId: "default_scene",
+        textOverride: enemyTurn.summary,
+        patch: withWorldPatch(
+          state,
+          globalUpdate,
+          initiativePatch,
+          enemyTurn.patch,
+          storyPatch,
+          tutorialStage ? { objectiveUpdate: buildNamelessTutorialObjective("attack") } : undefined
+        ),
+        meta: {
+          enemyName: state.combat.enemy,
+          enemyTurnSummary: enemyTurn.summary,
+          locationName: currentLocationName(state)
+        },
+        combatFlow: {
+          playerPatch: initiativePatch,
+          enemyTurn
+        }
+      };
+    }
     return {
       textId: "combat_initiative_lose",
       patch: withWorldPatch(
@@ -516,6 +841,32 @@ export function resolveWorldAction(
 
     const attackPatch = resolveCombatHit(state, hit);
     const enemyTurn = resolveEnemyTurn(state);
+    if (enemyTurn.defeated) {
+      const storyPatch = namelessStory
+        ? resolveNamelessStoryTrigger(state, { kind: "combat_win", enemyName: state.combat.enemy })
+        : undefined;
+      return {
+        textId: "default_scene",
+        textOverride: enemyTurn.summary,
+        patch: withWorldPatch(
+          state,
+          globalUpdate,
+          attackPatch,
+          enemyTurn.patch,
+          storyPatch,
+          tutorialStage ? { objectiveUpdate: buildNamelessTutorialObjective("repeat") } : undefined
+        ),
+        meta: {
+          enemyName: state.combat.enemy,
+          enemyTurnSummary: enemyTurn.summary,
+          locationName: currentLocationName(state)
+        },
+        combatFlow: {
+          playerPatch: attackPatch,
+          enemyTurn
+        }
+      };
+    }
     return {
       textId: hit.success ? "combat_hit_success" : "combat_hit_fail",
       patch: withWorldPatch(
@@ -545,7 +896,7 @@ export function resolveWorldAction(
         patch: withWorldPatch(state, globalUpdate, economyCheck.patch)
       };
     }
-    return resolvePendingStoryCheck(state, globalUpdate, hit.success);
+    return resolvePendingStoryCheck(state, globalUpdate, hit);
   }
 
   const economyAction = tryResolveEconomyAction(action, state, globalUpdate, proposedWorldAction);
@@ -564,6 +915,9 @@ export function resolveWorldAction(
     ? maybeStartMainlineChecks(state, action, globalUpdate, firstActionPatch)
     : undefined;
   if (mainline) return mainline;
+
+  const recoveryOrTraining = maybeHandleRecoveryOrTraining(state, action, globalUpdate, firstActionPatch);
+  if (recoveryOrTraining) return recoveryOrTraining;
 
   const martialArtStory = resolveMartialArtStoryAction(state, action);
   if (martialArtStory) {

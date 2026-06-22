@@ -1555,6 +1555,121 @@ button {
   line-height: 1.5;
 }
 
+.training-panel {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(242, 212, 141, .22);
+  border-radius: 8px;
+  background: rgba(22, 17, 12, .72);
+}
+
+.training-header,
+.training-group,
+.study-card,
+.training-action-card,
+.insight-card {
+  display: grid;
+  gap: 8px;
+}
+
+.training-header h3,
+.training-group-head b,
+.study-card b,
+.training-action-card b,
+.insight-card b {
+  margin: 0;
+  color: var(--gold-2);
+}
+
+.training-header small,
+.training-group-head span,
+.study-card small,
+.study-card span,
+.training-action-card small,
+.insight-card small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.training-group {
+  padding-top: 8px;
+  border-top: 1px dashed rgba(242, 212, 141, .14);
+}
+
+.training-group:first-of-type {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.training-group-head,
+.study-card-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.study-card,
+.training-action-card,
+.insight-card {
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(31, 24, 18, .72);
+}
+
+.study-card {
+  grid-template-columns: 1fr auto;
+  align-items: center;
+}
+
+.study-card-main {
+  display: grid;
+  gap: 4px;
+}
+
+.study-manual-list,
+.training-actions,
+.insight-actions {
+  display: grid;
+  gap: 8px;
+}
+
+.training-actions {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.insight-actions {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.study-card button,
+.training-action-card button,
+.insight-actions button {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid rgba(121, 168, 141, .5);
+  border-radius: 8px;
+  background: rgba(45, 88, 59, .55);
+  color: #c9f2d8;
+}
+
+.study-card button:disabled {
+  opacity: .58;
+}
+
+@media (max-width: 720px) {
+  .training-actions,
+  .insight-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .study-card {
+    grid-template-columns: 1fr;
+  }
+}
+
 .map-panel {
   display: grid;
   gap: 12px;

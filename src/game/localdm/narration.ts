@@ -53,23 +53,40 @@ export function buildLocalDmNarration(result: WorldResolution) {
     case "combat_initiative_win":
       return `你先一步看穿了 ${enemyName} 的起手，脚下先抢到半拍，眼前这一轮由你先动。`;
     case "combat_initiative_lose":
-      return withEnemyFollowup(`你和 ${enemyName} 一起起势，却还是慢了半拍。对方抢下先手，攻势立刻压了上来。`, result);
+      return withEnemyFollowup(`你和 ${enemyName} 一起起动，却还是慢了半拍。对方抢下先手，攻势立刻压了上来。`, result);
     case "combat_damage_end":
       return `这一招伤害终于把 ${enemyName} 压垮了，眼前这场厮杀到这里算是收住。`;
     case "combat_damage_continue":
       return withEnemyFollowup(`这一招实打实落在 ${enemyName} 身上，但对方还没倒，下一轮很快又会接上。`, result);
     case "combat_hit_end":
-      return `你这一下抢到了决定性的手，${enemyName} 再也接不住后劲，这场战斗到此为止。`;
+      return `你这一记抢到了决定性的手，${enemyName} 再也接不住后劲，这场战斗到此为止。`;
     case "combat_hit_success":
-      return `你这一手命中了 ${enemyName}，招式已经打穿对方的防线，接下来只差把伤害落实。`;
+      return `你这一手命中了 ${enemyName}，招式已经打穿对方的防线，接下来只差把伤害落定。`;
     case "combat_hit_fail":
       return withEnemyFollowup(`你这一击没能打穿 ${enemyName} 的防线，节奏立刻被对方抢了回去。`, result);
+    case "combat_escape_prompt":
+      return "你这一手是在设法先把身形从缠斗里拆出来。先按提示掷出逃脱判定，才能知道能不能真正脱身。";
+    case "combat_escape_success":
+      return `你抓住${enemyName}招式间的一线空当，身形一错，终于从这场缠斗里暂时抽了出去。`;
+    case "combat_escape_fail":
+      return withEnemyFollowup(`你这一退没能彻底脱开，反倒把空门露了出来，${enemyName}立刻顺势逼上。`, result);
     case "combat_named_start":
       return `你一动手，对面的 ${enemyName} 也不再藏着，战局立刻转成正面交锋。`;
     case "combat_generic_start":
       return "你这一出手，试探立刻变成了真正的交锋。";
     case "suggested_check":
       return "你这一步已经碰到关键处了，但还得掷出一个明确结果，局面才会真正落定。";
+    case "economy_no_merchant":
+    case "economy_merchant_blocked":
+    case "economy_shop_list":
+    case "economy_buy_success":
+    case "economy_buy_fail":
+    case "economy_sell_success":
+    case "economy_sell_fail":
+    case "economy_steal_prompt":
+    case "economy_steal_success":
+    case "economy_steal_fail":
+      return result.textOverride || "眼下这笔买卖还得看你下一步怎么接。";
     case "first_action":
       return "你迈出的第一步已经把这场江湖局真正拨动起来，线头开始露出来了。";
     case "default_scene":

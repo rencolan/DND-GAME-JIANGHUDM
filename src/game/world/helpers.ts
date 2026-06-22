@@ -1,5 +1,5 @@
 import { enemyPresets } from "../../data";
-import type { GamePatch, GameState, MartialArt, PendingCheck, Quest } from "../../types";
+import type { GamePatch, GameState, Quest } from "../../types";
 
 export type ParsedHitResult = {
   label?: string;
@@ -16,8 +16,14 @@ export type ParsedDamageResult = {
   total: number;
 };
 
+const ESCAPE_ACTION_KEYWORDS = ["逃跑", "撤退", "脱身", "夺路", "翻窗遁走", "借势退开"];
+
 export function includesAny(text: string, keywords: string[]) {
   return keywords.some((keyword) => text.includes(keyword));
+}
+
+export function isEscapeCombatAction(text: string) {
+  return includesAny(text, ESCAPE_ACTION_KEYWORDS);
 }
 
 export function currentLocation(state: GameState) {
@@ -54,102 +60,124 @@ export function findNamedEnemy(action: string) {
   return enemyPresets.find((preset) => action.includes(preset.name));
 }
 
+function extractLabel(text: string, prefix: "判定" | "伤害") {
+  const direct = text.match(new RegExp(`【${prefix}】\\s*(.+)`));
+  if (direct?.[1]) return direct[1].trim();
+  const legacy = text.match(new RegExp(`銆愬${prefix === "判定" ? "垽瀹" : "激瀹"}.*?\\s*(.+)`));
+  return legacy?.[1]?.trim();
+}
+
+function extractLastNumber(text: string, pattern: RegExp) {
+  const match = text.match(pattern);
+  return Number(match?.[1] || Number.NaN);
+}
+
 export function parseHitResult(text: string): ParsedHitResult {
-  const label = text.match(/【判定】(.+)/)?.[1]?.trim()
-    || text.match(/銆愬垽瀹氥€?(.+)/)?.[1]?.trim();
-  const naturalRoll = Number(text.match(/d20[：:]\s*(\d+)/)?.[1] || Number.NaN);
-  const total = Number(text.match(/总计[：:]\s*(\d+)/)?.[1] || text.match(/鎬昏锛?\s*(\d+)/)?.[1] || Number.NaN);
-  const dc = Number(text.match(/DC (\d+)/)?.[1] || Number.NaN);
-  const result = text.match(/结果[：:]\s*(成功|失败)/)?.[1]
-    || text.match(/缁撴灉锛?\s*(鎴愬姛|澶辫触)/)?.[1];
-  const damageTotal = Number(text.match(/= (\d+)\s*$/m)?.[1] || 0);
-  const isCritical = naturalRoll === 20 || text.includes("暴击");
+  const label = extractLabel(text, "判定");
+  const naturalRoll = extractLastNumber(text, /d20[=:：]\s*(\d+)/);
+  const total = Number(
+    text.match(/总计[：:]\s*(\d+)/)?.[1]
+    || text.match(/鎬昏锛?\s*(\d+)/)?.[1]
+    || Number.NaN
+  );
+  const dc = extractLastNumber(text, /DC\s*(\d+)/);
+  const success = text.includes("结果：成功")
+    ? true
+    : text.includes("结果：失败")
+      ? false
+      : (naturalRoll === 20 || total >= dc);
+  const damageTotal = extractLastNumber(text, /=\s*(\d+)\s*$/m);
+  const isCritical = naturalRoll === 20 || text.includes("暴击：是") || text.includes("暴击");
 
   return {
     label,
     total,
     dc,
-    success: result ? (result === "成功" || result === "鎴愬姛") : (isCritical || total >= dc),
-    damageTotal,
+    success: naturalRoll === 1 ? false : success,
+    damageTotal: Number.isNaN(damageTotal) ? 0 : damageTotal,
     naturalRoll,
     isCritical
   };
 }
 
 export function parseDamageResult(text: string): ParsedDamageResult {
-  const label = text.match(/【伤害】(.+?)\s+\d+d\d+/)?.[1]?.trim()
-    || text.match(/銆愪激瀹炽€?(.+?)\s+\d+d\d+/)?.[1]?.trim();
-  const total = Number(text.match(/= (\d+)\s*$/m)?.[1] || Number.NaN);
-
-  return {
-    label,
-    total
-  };
+  const label = extractLabel(text, "伤害")?.match(/^(.+?)\s+\d+d\d+/)?.[1]?.trim() || extractLabel(text, "伤害");
+  const total = extractLastNumber(text, /=\s*(\d+)\s*$/m);
+  return { label, total };
 }
 
 export function parseCombatHitResult(text: string): ParsedHitResult {
-  const label = text.match(/【判定】\s*(.+)/)?.[1]?.trim();
-  const naturalRoll = Number(text.match(/d20[=:：]\s*(\d+)/)?.[1] || Number.NaN);
-  const total = Number(text.match(/总计[：:]\s*(\d+)/)?.[1] || Number.NaN);
-  const dc = Number(text.match(/DC (\d+)/)?.[1] || Number.NaN);
-  const result = text.match(/结果[：:]\s*(成功|失败)/)?.[1];
-  const damageTotal = Number(text.match(/= (\d+)\s*$/m)?.[1] || 0);
-  const isCritical = naturalRoll === 20 || text.includes("暴击");
-  const success = naturalRoll === 1
-    ? false
-    : result
-      ? result === "成功"
-      : (isCritical || total >= dc);
-
-  return {
-    label,
-    total,
-    dc,
-    success,
-    damageTotal,
-    naturalRoll,
-    isCritical
-  };
+  return parseHitResult(text);
 }
 
 export function parseCombatDamageResult(text: string): ParsedDamageResult {
-  const label = text.match(/【伤害】\s*(.+?)\s+\d+d\d+/)?.[1]?.trim();
-  const total = Number(text.match(/= (\d+)\s*$/m)?.[1] || Number.NaN);
-
-  return {
-    label,
-    total
-  };
+  return parseDamageResult(text);
 }
 
 export function buildSuggestedCheck(action: string): GamePatch["pendingCheck"] | undefined {
-  if (includesAny(action, ["查看", "调查", "打探", "辨认", "查验"])) {
+  if (includesAny(action, ["查看", "调查", "打探", "辨认", "查验", "拆招", "推演", "演练", "认穴", "琢磨"])) {
     return {
-      label: "看出线索真假",
+      kind: "world",
+      label: "看破线索与门路",
       abilityKey: "int",
       dc: 12,
-      reason: "眼前线索杂乱，需要先分辨哪条值得继续追下去。",
-      risk: "如果失败，你会看漏关键处，或者惊动旁人。"
+      reason: "眼前细节不少，得先看出哪条线索、哪处破绽真正值得追下去。",
+      risk: "若失手，你可能漏掉关键处，或把局面看偏。"
     };
   }
 
-  if (includesAny(action, ["潜行", "摸近", "闪避", "轻功"])) {
+  if (includesAny(action, ["潜行", "摸近", "闪避", "轻功", "绕后", "翻窗", "抢位", "贴身"])) {
     return {
-      label: "不露声色地占位",
+      kind: "world",
+      label: "轻身夺位不露形迹",
       abilityKey: "dex",
       dc: 13,
-      reason: "局面很紧，想悄悄抢到有利位置并不轻松。",
-      risk: "如果失败，你会先暴露自己。"
+      reason: "这一步讲究身法和步点，既要快，也要不露声色。",
+      risk: "若失手，你会先一步暴露。"
     };
   }
 
-  if (includesAny(action, ["说服", "交涉", "安抚", "套话"])) {
+  if (includesAny(action, ["硬闯", "破门", "掀翻", "擒抱", "压制", "扛物", "撞开"])) {
     return {
-      label: "让对方松口",
+      kind: "world",
+      label: "正面发力强行破局",
+      abilityKey: "str",
+      dc: 13,
+      reason: "这不是取巧的时候，得靠正面力道把局势顶开。",
+      risk: "若失手，你会被当场拦住，甚至先露破绽。"
+    };
+  }
+
+  if (includesAny(action, ["死撑", "抗毒", "硬扛", "忍伤", "熬住", "长途跋涉", "扛下"])) {
+    return {
+      kind: "world",
+      label: "咬牙硬扛过去",
+      abilityKey: "con",
+      dc: 12,
+      reason: "这一步拼的不是巧劲，而是体魄、耐性与能不能熬住。",
+      risk: "若失手，你会先一步露出疲态或伤势。"
+    };
+  }
+
+  if (includesAny(action, ["调息", "运气", "疗伤", "感知", "静坐", "周天", "内功运转", "运转内功"])) {
+    return {
+      kind: "world",
+      label: "稳住气机与心神",
+      abilityKey: "wis",
+      dc: 12,
+      reason: "这一手讲究心神沉定、真气归拢，不能急躁乱来。",
+      risk: "若失手，气机会更乱，白白耗去心力。"
+    };
+  }
+
+  if (includesAny(action, ["说服", "交涉", "安抚", "套话", "讲价", "求人", "圆场", "威吓", "求助", "欺瞒"])) {
+    return {
+      kind: "world",
+      label: "让对方松口表态",
       abilityKey: "cha",
       dc: 12,
-      reason: "对方心里有防备，不会轻易把话说明白。",
-      risk: "如果失败，对方会更警惕。"
+      reason: "对方心里有戒备，想让他松口，靠的是气度、话头和临场拿捏。",
+      risk: "若失手，对方会更警觉，也更不愿配合。"
     };
   }
 
@@ -165,10 +193,10 @@ function findPlayerMartialArtFromAction(state: GameState, action: string) {
 }
 
 function inferCombatAbilityKey(action: string) {
-  if (includesAny(action, ["刀", "砍", "劈", "斩", "硬进", "硬闯", "猛冲", "迎面", "压上", "硬接", "大开大阖"])) return "str";
+  if (includesAny(action, ["刀", "拳", "掌", "棍", "硬进", "硬闯", "猛冲", "迎面", "压上", "硬接", "大开大阖"])) return "str";
   if (includesAny(action, ["闪", "绕", "侧身", "滑步", "游走", "抢步", "快刺", "贴身", "轻身", "飘开"])) return "dex";
   if (includesAny(action, ["提气", "运气", "以内力", "内劲", "护体", "调息", "真气"])) return "wis";
-  if (includesAny(action, ["拆招", "看破", "料敌", "变招", "算准", "窥破"])) return "int";
+  if (includesAny(action, ["拆招", "看破", "料敌", "变招", "算准", "突破"])) return "int";
   if (includesAny(action, ["硬扛", "死撑", "顶住", "抗下"])) return "con";
   return undefined;
 }
@@ -178,23 +206,41 @@ function pickMartialArtForAbility(state: GameState, abilityKey?: string) {
   return state.character.martialArts.find((art) => art.linkedAbility === abilityKey);
 }
 
+export function buildCombatEscapePromptText(state: GameState, check: NonNullable<GamePatch["pendingCheck"]>) {
+  const label = abilityLabel(state, check.abilityKey);
+  const modeText = check.rollMode === "advantage"
+    ? "优势，掷 2d20 取高"
+    : check.rollMode === "disadvantage"
+      ? "劣势，掷 2d20 取低"
+      : "常规，掷 1d20";
+  return `你这一手是在设法脱身，眼下该用${label}判定，DC ${check.dc}，${modeText}。请点开“待逃脱”，先把这一掷做完。`;
+}
+
 export function buildCombatActionCheck(
   state: GameState,
   action: string
 ): { pendingCheck: GamePatch["pendingCheck"]; promptText: string } | undefined {
   if (!state.combat.active || !state.pendingCheck) return undefined;
 
+  if (state.pendingCheck.kind === "combat_escape") {
+    return {
+      pendingCheck: state.pendingCheck,
+      promptText: buildCombatEscapePromptText(state, state.pendingCheck)
+    };
+  }
+
   if (state.combat.phase === "opening") {
     const label = abilityLabel(state, "dex");
     return {
       pendingCheck: {
         ...state.pendingCheck,
+        kind: "initiative",
         abilityKey: "dex",
         rollMode: "normal",
         reason: `${state.combat.enemy || "对手"}已经起势。这一下比的不是花巧，而是谁先抢到先手。`,
         suggestedAction: `请掷 d20 + ${label}，先定这一轮谁先动。`
       },
-      promptText: `你这一手说到底是在抢先手，这一步固定用${label}判定。请点开“待先攻”，掷 d20 + ${label}，先看这一轮谁先动。`
+      promptText: `你这一步说到底是在抢先手，这一步固定用${label}判定。请点开“待先攻”，掷 d20 + ${label}，先看这一轮谁先动。`
     };
   }
 
@@ -210,16 +256,17 @@ export function buildCombatActionCheck(
   return {
     pendingCheck: {
       ...state.pendingCheck,
+      kind: "combat_attack",
       label: `攻击 ${enemyName}`,
       abilityKey: inferredAbilityKey,
       martialArtId: inferredArt?.id,
       rollMode: "normal",
-      reason: `你这一手是要正面对${enemyName}递招，眼下先按${label}做攻击判定；若命中，再掷伤害。`,
+      reason: `你这一手是要正面对${enemyName}递招，眼下先用${label}做攻击判定；若命中，再掷伤害。`,
       suggestedAction: `请掷 d20 + ${label}。`
     },
     promptText: inferredArt
-      ? `你这一手可按「${actionLabel}」来算，先用${label}做攻击判定。请点开“待攻击”，按 d20 + ${label} 掷骰；若命中，再掷这招的伤害。`
-      : `你这一手更偏${label}路数，眼下先用${label}做攻击判定。请点开“待攻击”，按 d20 + ${label} 掷骰；命中之后，再结算伤害。`
+      ? `你这一手可按“${actionLabel}”来算，先用${label}做攻击判定。请点开“待攻击”，掷 d20 + ${label}；若命中，再掷这招的伤害。`
+      : `你这一手更像${label}路数，眼下先用${label}做攻击判定。请点开“待攻击”，掷 d20 + ${label}；命中之后，再结算伤害。`
   };
 }
 

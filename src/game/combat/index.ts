@@ -1,8 +1,24 @@
 import { enemyPresets } from "../../data";
-import { abilityModifier, calculateMartialDamageBonus } from "../rules";
-import type { GamePatch, GameState, MartialArt, PendingCheck } from "../../types";
+import {
+  abilityModifier,
+  abilityValue,
+  calculateInnerInjuryPressure,
+  calculateMartialDamageBonus,
+  injuryTickDamage,
+  resolveInnerInjuryDelta
+} from "../rules";
+import type { GamePatch, GameState, MartialArt, PendingCheck, RollMode, ThreatTier } from "../../types";
 
 const DEFAULT_ENEMY_NAME = "黑衣刺客";
+const ESCAPE_THREAT_MOD: Record<ThreatTier, number> = {
+  weak: 1,
+  normal: 3,
+  elite: 5,
+  master: 8
+};
+const ESCAPE_ADVANTAGE_KEYWORDS = ["翻窗", "掀桌", "借烟尘", "转角", "混入人群", "借势退开"];
+const ESCAPE_DISADVANTAGE_KEYWORDS = ["硬闯", "转身就跑", "背身撤退", "正面硬冲"];
+const ESCAPE_ABILITY_KEYS = new Set(["str", "dex", "con", "int", "wis", "cha"]);
 
 export type CombatHitResult = {
   label?: string;
@@ -23,6 +39,8 @@ type StartCombatOptions = Partial<PendingCheck> & {
   systemNote?: string;
   skipInitiative?: boolean;
 };
+
+type InjuryTrigger = "external_crit" | "internal_hit" | "internal_crit";
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
@@ -67,12 +85,47 @@ function hasBlockedInternalArts(state: GameState) {
 }
 
 export function inferCombatStakes(enemyName: string) {
-  return `先稳住 ${enemyName}，别让局势继续被对方推着走。`;
+  return `先稳住${enemyName}，别让局势继续被对方推着走。`;
 }
 
 function findAbilityModifier(abilities: GameState["character"]["abilities"] | undefined, abilityKey = "dex") {
   const score = abilities?.find((ability) => ability.key === abilityKey)?.value ?? 10;
   return abilityModifier(score);
+}
+
+function abilityLabel(state: GameState, abilityKey = "dex") {
+  return state.character.abilities.find((ability) => ability.key === abilityKey)?.label || abilityKey.toUpperCase();
+}
+
+function enemyThreatTier(state: GameState): ThreatTier {
+  const enemyName = state.combat.enemy || DEFAULT_ENEMY_NAME;
+  const preset = findEnemyPreset(enemyName);
+  const enemyAc = preset?.ac ?? state.combat.enemyAc ?? 10;
+  const enemyMaxHp = preset?.maxHp ?? state.combat.enemyMaxHp ?? 1;
+
+  if (enemyAc <= 10 && enemyMaxHp <= 16) return "weak";
+  if (enemyAc <= 12 && enemyMaxHp <= 30) return "normal";
+  if (enemyAc <= 14 && enemyMaxHp <= 45) return "elite";
+  return "master";
+}
+
+function normalizeEscapeAbilityKey(proposed?: string) {
+  return proposed && ESCAPE_ABILITY_KEYS.has(proposed) ? proposed : "dex";
+}
+
+function resolveEscapeRollMode(state: GameState, action: string): RollMode {
+  const lowerHp = state.character.hp <= Math.ceil(state.character.maxHp * 0.25);
+  const threatTier = enemyThreatTier(state);
+  const enemyStatuses = state.combat.enemyStatus || [];
+  const allowAdvantage = enemyStatuses.includes("exposed")
+    || ESCAPE_ADVANTAGE_KEYWORDS.some((keyword) => action.includes(keyword));
+  const allowDisadvantage = lowerHp
+    || ((threatTier === "elite" || threatTier === "master")
+      && ESCAPE_DISADVANTAGE_KEYWORDS.some((keyword) => action.includes(keyword)));
+
+  if (allowDisadvantage) return "disadvantage";
+  if (allowAdvantage) return "advantage";
+  return "normal";
 }
 
 function rollD20() {
@@ -128,12 +181,13 @@ function buildInitiativeCheck(state: GameState, enemyName?: string): GamePatch["
   const enemyInitiative = rollD20() + enemyDexMod;
 
   return {
+    kind: "initiative",
     label: `抢先手：${foe}`,
     abilityKey: "dex",
     dc: enemyInitiative,
-    reason: `${foe} 已经逼到眼前，谁先起手，谁就先掌握这一轮节奏。`,
+    reason: `${foe}已经逼到眼前，谁先起手，谁就先掌住这一轮的节奏。`,
     risk: "若失去先手，对方会先动。",
-    enemyIntent: `${foe} 正盯着你的起手，想抢在你前头压上来。`,
+    enemyIntent: `${foe}正盯着你的起手，想抢在你前头压上来。`,
     suggestedAction: "用身法和时机抢下先手。"
   };
 }
@@ -143,12 +197,45 @@ export function buildPlayerAttackCheck(state: GameState): GamePatch["pendingChec
 
   const enemyName = state.combat.enemy || DEFAULT_ENEMY_NAME;
   return {
+    kind: "combat_attack",
     label: `攻击 ${enemyName}`,
     dc: state.combat.enemyAc || 12,
     reason: "现在轮到你回手。选定一门武学，先做攻击判定，命中后再结算伤害。",
     risk: "若失手，对方会立刻把节奏抢回去。",
-    enemyIntent: `${enemyName} 正在等你失手，好顺势反压。`,
-    suggestedAction: "挑一门顺手的武学，直接掷攻击。"
+    enemyIntent: `${enemyName}正在等你失手，好顺势反压。`,
+    suggestedAction: "挑一门顺手的武学，直接接攻击。"
+  };
+}
+
+export function buildCombatEscapeCheck(
+  state: GameState,
+  action: string,
+  proposedCheck?: Partial<PendingCheck>
+): GamePatch["pendingCheck"] | undefined {
+  if (!state.combat.active) return undefined;
+
+  const enemyName = state.combat.enemy || DEFAULT_ENEMY_NAME;
+  const abilityKey = normalizeEscapeAbilityKey(proposedCheck?.abilityKey);
+  const label = abilityLabel(state, abilityKey);
+  const threatTier = enemyThreatTier(state);
+  const enemyDexMod = Math.max(findAbilityModifier(state.combat.enemyAbilities, "dex"), 0);
+  const rollMode = resolveEscapeRollMode(state, action);
+  const modeText = rollMode === "advantage"
+    ? "2d20 取高"
+    : rollMode === "disadvantage"
+      ? "2d20 取低"
+      : "1d20";
+
+  return {
+    kind: "combat_escape",
+    label: `脱身 ${enemyName}`,
+    abilityKey,
+    rollMode,
+    dc: 10 + ESCAPE_THREAT_MOD[threatTier] + enemyDexMod,
+    reason: proposedCheck?.reason || `${enemyName}正抢着节奏压你，若要脱身，得先用${label}把身形拆出来。`,
+    risk: "若失败，这回合你会直接让给对方。",
+    enemyIntent: `${enemyName}正想把压力继续追在你身上，不会轻易让你抽身。`,
+    suggestedAction: `请掷 ${modeText}，再加${label}，看能不能先把身位拉开。`
   };
 }
 
@@ -169,16 +256,74 @@ export type EnemyTurnResult = {
     heroHpAfter: number;
     enemyHpBefore: number;
     enemyHpAfter: number;
-    nextPhase: GamePatch["combatUpdate"] extends infer T
-      ? T extends { phase?: infer P }
-        ? P
-        : never
-      : never;
+    enemyInnerInjuryBefore?: number;
+    enemyInnerInjuryAfter?: number;
+    enemyInnerInjuryTickDamage?: number;
+    playerInnerInjuryDelta?: number;
+    nextPhase: GameState["combat"]["phase"];
   };
 };
 
+function resolveInjuryTrigger(art: MartialArt | undefined, isCritical: boolean): InjuryTrigger | undefined {
+  if (art?.category === "internal") {
+    return isCritical ? "internal_crit" : "internal_hit";
+  }
+  if (isCritical) return "external_crit";
+  return undefined;
+}
+
+function resolveInnerInjuryFromAttack(
+  attackerWis: number,
+  defenderCon: number,
+  trigger: InjuryTrigger | undefined
+) {
+  if (!trigger) return 0;
+  return resolveInnerInjuryDelta(calculateInnerInjuryPressure(attackerWis, defenderCon, trigger));
+}
+
 export function resolveEnemyTurn(state: GameState, advanceRound = true): EnemyTurnResult {
   const enemyName = state.combat.enemy || DEFAULT_ENEMY_NAME;
+  const enemyHpBefore = state.combat.enemyHp || 0;
+  const enemyInnerInjuryBefore = state.combat.enemyInnerInjury || 0;
+  const enemyInnerInjuryTick = injuryTickDamage(enemyInnerInjuryBefore);
+  const enemyHpAfterTick = clamp(enemyHpBefore - enemyInnerInjuryTick, 0, state.combat.enemyMaxHp || 1);
+
+  if (enemyHpAfterTick <= 0) {
+    return {
+      summary: `${enemyName}内伤发作，气脉一散，当场失去再战之力。`,
+      defeated: true,
+      details: {
+        actionLabel: "内伤发作",
+        damageDice: "0",
+        damageBonus: 0,
+        naturalRoll: 0,
+        total: 0,
+        hit: false,
+        critical: false,
+        damage: 0,
+        heroHpBefore: state.character.hp,
+        heroHpAfter: state.character.hp,
+        enemyHpBefore,
+        enemyHpAfter: enemyHpAfterTick,
+        enemyInnerInjuryBefore,
+        enemyInnerInjuryAfter: enemyInnerInjuryBefore,
+        enemyInnerInjuryTickDamage: enemyInnerInjuryTick,
+        playerInnerInjuryDelta: 0,
+        nextPhase: "ended"
+      },
+      patch: {
+        pendingCheck: undefined,
+        combatUpdate: {
+          enemyHpChange: -enemyInnerInjuryTick,
+          phase: "ended",
+          stakes: `${enemyName}被自身伤势拖垮。`
+        },
+        combatAction: "exit",
+        systemNote: `${enemyName}内伤发作，当场失去再战之力。`
+      }
+    };
+  }
+
   const enemyArt = chooseEnemyArt(state);
   const actionLabel = enemyArt?.name || "普通一击";
   const attackAbility = enemyArt?.linkedAbility || "dex";
@@ -186,26 +331,33 @@ export function resolveEnemyTurn(state: GameState, advanceRound = true): EnemyTu
   const heroAc = state.character.ac || 10;
   const naturalRoll = rollD20();
   const total = naturalRoll + enemyAttackMod;
-  const isCritical = naturalRoll === 20;
-  const hit = naturalRoll !== 1 && (isCritical || total >= heroAc);
+  const critical = naturalRoll === 20;
+  const hit = naturalRoll !== 1 && (critical || total >= heroAc);
   const damageRoll = enemyArt
-    ? rollDamageTotal(enemyArt.damageDice, isCritical)
+    ? rollDamageTotal(enemyArt.damageDice, critical)
     : { rolls: [4], total: 4 };
   const damageBonus = enemyArt?.damageBonus || 0;
-  const totalDamage = hit ? damageRoll.total + damageBonus : 0;
-  const heroAfter = clamp(state.character.hp - totalDamage, 0, state.character.maxHp);
-  const nextCheck = heroAfter > 0 ? buildPlayerAttackCheck(state) : undefined;
-  const nextPhase = heroAfter > 0 ? "awaiting_hit_check" : "ended";
+  const damage = hit ? damageRoll.total + damageBonus : 0;
+  const heroHpAfter = clamp(state.character.hp - damage, 0, state.character.maxHp);
+  const playerInnerInjuryDelta = hit
+    ? resolveInnerInjuryFromAttack(
+      abilityValue(state.combat.enemyAbilities, "wis"),
+      abilityValue(state.character.abilities, "con"),
+      resolveInjuryTrigger(enemyArt, critical)
+    )
+    : 0;
+  const nextCheck = heroHpAfter > 0 ? buildPlayerAttackCheck(state) : undefined;
+  const nextPhase = heroHpAfter > 0 ? "awaiting_hit_check" : "ended";
   const summary = hit
-    ? `${enemyName}使出${actionLabel}，打中了你${totalDamage}点${isCritical ? "（暴击）" : ""}。`
+    ? `${enemyName}使出${actionLabel}，命中了你，造成 ${damage} 点伤害${critical ? "（暴击）" : ""}。`
     : `${enemyName}使出${actionLabel}，却没能真正打实。`;
   const systemNote = hasBlockedInternalArts(state)
-    ? `${enemyName}内力一时续不上来，只能改用不耗气的招式。${summary}`
+    ? `${enemyName}内力一时接续不上，只能改用不耗气的招式。${summary}`
     : summary;
 
   return {
     summary,
-    defeated: heroAfter <= 0,
+    defeated: heroHpAfter <= 0,
     details: {
       actionLabel,
       damageDice: enemyArt?.damageDice || "1d4",
@@ -213,25 +365,31 @@ export function resolveEnemyTurn(state: GameState, advanceRound = true): EnemyTu
       naturalRoll,
       total,
       hit,
-      critical: isCritical,
-      damage: totalDamage,
+      critical,
+      damage,
       heroHpBefore: state.character.hp,
-      heroHpAfter: heroAfter,
-      enemyHpBefore: state.combat.enemyHp || 0,
-      enemyHpAfter: state.combat.enemyHp || 0,
+      heroHpAfter,
+      enemyHpBefore,
+      enemyHpAfter: enemyHpAfterTick,
+      enemyInnerInjuryBefore,
+      enemyInnerInjuryAfter: enemyInnerInjuryBefore,
+      enemyInnerInjuryTickDamage: enemyInnerInjuryTick,
+      playerInnerInjuryDelta,
       nextPhase
     },
     patch: {
-      hpChange: hit ? -totalDamage : 0,
+      hpChange: hit ? -damage : 0,
+      innerInjuryChange: playerInnerInjuryDelta,
       pendingCheck: nextCheck,
       combatUpdate: {
+        enemyHpChange: -enemyInnerInjuryTick,
         enemyQiCost: enemyArt?.category === "internal" ? enemyArt.baseQiCost : 0,
         enemyMartialArtUsed: enemyArt?.name,
         phase: nextPhase,
-        roundDelta: heroAfter > 0 && advanceRound ? 1 : 0,
+        roundDelta: heroHpAfter > 0 && advanceRound ? 1 : 0,
         stakes: inferCombatStakes(enemyName)
       },
-      combatAction: heroAfter <= 0 ? "exit" : "none",
+      combatAction: heroHpAfter <= 0 ? "exit" : "none",
       systemNote
     }
   };
@@ -246,20 +404,21 @@ export function getNextEnemyPendingCheck(state: GameState): GamePatch["pendingCh
   const internalBlocked = hasBlockedInternalArts(state);
 
   return {
+    kind: "combat_attack",
     label: `应对 ${enemyName} 的下一手`,
     abilityKey: linkedAbility,
     martialArtId: nextArt?.id,
     dc: clamp((state.combat.enemyAc || 12) + 2, 11, 18),
     reason: nextArt
       ? internalBlocked
-        ? `${enemyName}内力接续不上，眼下更可能改用${nextArt.name}这样的不耗气招式逼上来。`
+        ? `${enemyName}内力接续不上，眼下更可能改用${nextArt.name}这样的不耗气招式贴上来。`
         : `${enemyName}正要以${nextArt.name}继续往前压。`
       : `${enemyName}正试图重新把先手抢回去。`,
     risk: "若失手，你会受伤或失位。",
     enemyIntent: nextArt
       ? internalBlocked
         ? `${enemyName}想先稳住气息，再用外功把压力续上。`
-        : `${enemyName}想借${nextArt.name}把你逼乱。`
+        : `${enemyName}想靠${nextArt.name}把你逼乱。`
       : `${enemyName}想把压力一直续下去。`,
     suggestedAction: "你可以硬接、闪身、反击，或先拆掉对方的节奏。"
   };
@@ -267,14 +426,15 @@ export function getNextEnemyPendingCheck(state: GameState): GamePatch["pendingCh
 
 export function startCombat(state: GameState, enemyName: string, options: StartCombatOptions = {}): GamePatch {
   const preset = findEnemyPreset(enemyName || DEFAULT_ENEMY_NAME);
-  const pendingCheck = options.skipInitiative
+  const pendingCheck: GamePatch["pendingCheck"] = options.skipInitiative
     ? {
+      kind: "combat_attack",
       label: options.label || `攻击 ${preset.name}`,
       dc: options.dc ?? preset.ac,
-      reason: options.reason || `你已经抢到了起手，眼下正好追击 ${preset.name}。`,
+      reason: options.reason || `你已经抢到了起手，眼下正好追击${preset.name}。`,
       risk: options.risk || "若失手，对方会稳住脚跟再反扑。",
       enemyIntent: options.enemyIntent || `${preset.name}想先稳住架子，再把这口气续回来。`,
-      suggestedAction: options.suggestedAction || "选一门武学，直接掷攻击判定。"
+      suggestedAction: options.suggestedAction || "选一门武学，直接接攻击判定。"
     }
     : buildInitiativeCheck(state, preset.name);
 
@@ -322,11 +482,18 @@ export function resolveCombatDamage(state: GameState, damage: CombatDamageResult
 
   const enemyName = state.combat.enemy || DEFAULT_ENEMY_NAME;
   const enemyAfter = clamp((state.combat.enemyHp || 0) - damage.total, 0, state.combat.enemyMaxHp || 1);
+  const pendingArt = state.character.martialArts.find((art) => art.id === state.pendingDamage?.martialArtId);
+  const enemyInnerInjuryDelta = resolveInnerInjuryFromAttack(
+    abilityValue(state.character.abilities, "wis"),
+    abilityValue(state.combat.enemyAbilities, "con"),
+    resolveInjuryTrigger(pendingArt, Boolean(state.pendingDamage?.isCritical))
+  );
 
   return {
     pendingDamage: undefined,
     combatUpdate: {
       enemyHpChange: -damage.total,
+      enemyInnerInjuryChange: enemyInnerInjuryDelta,
       enemyStatusAdd: damage.total >= 10 ? ["exposed"] : [],
       phase: enemyAfter > 0 ? "resolving_enemy_response" : "ended",
       stakes: inferCombatStakes(enemyName)
@@ -370,6 +537,34 @@ export function resolveCombatHit(state: GameState, hit: CombatHitResult): GamePa
   };
 }
 
+export function resolveCombatEscape(state: GameState, hit: CombatHitResult): GamePatch {
+  if (!state.combat.active) return {};
+
+  const enemyName = state.combat.enemy || DEFAULT_ENEMY_NAME;
+  if (hit.success) {
+    return {
+      pendingCheck: undefined,
+      pendingDamage: undefined,
+      combatUpdate: {
+        phase: "ended",
+        stakes: `你暂时摆脱了 ${enemyName} 的缠斗。`
+      },
+      combatAction: "exit",
+      systemNote: `你找到了空当，暂时摆脱了 ${enemyName} 的缠斗。`
+    };
+  }
+
+  return {
+    pendingCheck: undefined,
+    pendingDamage: undefined,
+    combatUpdate: {
+      phase: "resolving_enemy_response",
+      stakes: inferCombatStakes(enemyName)
+    },
+    systemNote: "你想抽身的这一步没能成，空门立刻就露了出来。"
+  };
+}
+
 export function cleanupCombatState(): GamePatch {
   return {
     pendingCheck: undefined,
@@ -379,13 +574,4 @@ export function cleanupCombatState(): GamePatch {
     },
     combatAction: "exit"
   };
-}
-
-function parseDiceTotal(damageDice: string) {
-  const match = damageDice.trim().toLowerCase().match(/^(\d+)d(\d+)$/);
-  if (!match) return 0;
-
-  const count = Number(match[1]);
-  const sides = Number(match[2]);
-  return count * Math.ceil(sides / 2);
 }

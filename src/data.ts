@@ -79,39 +79,55 @@ const makeCharacter = (
   const maxQi = calculateMaxQi(qi, focus[5]);
 
   return ({
-  id,
-  name,
-  title,
-  portrait: portrait(id),
-  hp,
-  maxHp: hp,
-  qi: maxQi,
-  maxQi,
-  ac: calculateAcFromDex(focus[1]),
-  silver: 36,
-  abilities: [
-    { key: "str", label: "力道", value: focus[0] },
-    { key: "dex", label: "身法", value: focus[1] },
-    { key: "con", label: "根骨", value: focus[2] },
-    { key: "int", label: "悟性", value: focus[3] },
-    { key: "cha", label: "气运", value: focus[4] },
-    { key: "wis", label: "心境", value: focus[5] }
-  ],
-  martialArts,
-  inventory: defaultInventory(),
-  ...extra
-});
+    id,
+    name,
+    title,
+    portrait: portrait(id),
+    hp,
+    maxHp: hp,
+    qi: maxQi,
+    maxQi,
+    ac: calculateAcFromDex(focus[1]),
+    silver: 36,
+    abilities: [
+      { key: "str", label: "力道", value: focus[0] },
+      { key: "dex", label: "身法", value: focus[1] },
+      { key: "con", label: "根骨", value: focus[2] },
+      { key: "int", label: "悟性", value: focus[3] },
+      { key: "cha", label: "气运", value: focus[4] },
+      { key: "wis", label: "心境", value: focus[5] }
+    ],
+    martialArts,
+    inventory: defaultInventory(),
+    ...extra
+  });
 };
 
 export const itemCatalog: Item[] = [
-  item("medicine", "閲戠柈鑽?", "鎭㈠ 8 鐐圭敓鍛姐€?", 1, { type: "consumable", usable: true, hpRestore: 8, value: 18 }),
-  item("qi-pill", "琛屾皵鏁?", "鎭㈠ 2 鐐瑰唴鍔涖€?", 1, { type: "consumable", usable: true, qiRestore: 2, value: 14 }),
-  item("dried-meat", "鑵婅倝骞茬伯", "鏂瑰寘閲岀殑甯稿骞茬伯锛岃兘鍏堝浠樹竴椁愩€?", 1, { type: "goods", value: 6 }),
-  item("lamp-oil", "鐏补灏忓￥", "鍑哄甯哥敤鐨勬补灏忓￥锛屽彲鎷夎繃涓€鏅氥€?", 1, { type: "goods", value: 9 }),
-  item("cloth-wrap", "甯冨寘鑽竷", "鏃呬汉甯哥敤鐨勫竷鏉★紝鍖呮墡浼ゅ彛鎴栧寘瑁归浂鐗╅兘鍚堥€傘€?", 1, { type: "goods", value: 11 }),
-  item("tea-brick", "鑼剁爾", "鍘嬬揣鐨勮尪鐮栵紝璺笂鎹㈣兘鎹簺閾惰揣銆?", 1, { type: "goods", value: 16 }),
-  item("silk-pouch", "缁告灏忚", "鍋氬伐杩樼畻缁嗙殑缁告灏忚锛屽競闈㈤噷绠楁槸椤轰漢鐨勮揣銆?", 1, { type: "goods", value: 28 }),
-  item("jade-pin", "鐜夌睧閽?", "灏忓阀鐨勭帀璐ㄥ彂閽楋紝鏄撳甫涔熸樉鐪笺€?", 1, { type: "goods", value: 42, canSteal: true })
+  item("medicine", "金疮药", "恢复 8 点生命。", 1, { type: "consumable", usable: true, hpRestore: 8, value: 18 }),
+  item("qi-pill", "行气散", "恢复 2 点内力。", 1, { type: "consumable", usable: true, qiRestore: 2, value: 14 }),
+  item("yangluo-powder", "养络散", "温养经络、化散郁滞之气。使用后内伤 -12。", 1, {
+    type: "consumable",
+    usable: true,
+    innerInjuryRestore: 12,
+    value: 24
+  }),
+  item("dried-meat", "腊肉干粮", "便于路上携带的干粮，顶饿耐放。", 1, { type: "goods", value: 6 }),
+  item("lamp-oil", "灯油小壶", "外出常备的一小壶灯油，夜里最用得上。", 1, { type: "goods", value: 9 }),
+  item("cloth-wrap", "药布卷", "行路人常备的药布和包扎布，轻伤时派得上用场。", 1, { type: "goods", value: 11 }),
+  item("tea-brick", "茶砖", "压得结实的茶砖，拿去换钱也算顺手。", 1, { type: "goods", value: 16 }),
+  item("silk-pouch", "丝绸小袋", "做工还算细的丝绸小袋，市面上颇有人肯收。", 1, { type: "goods", value: 28 }),
+  item("jade-pin", "玉簪钗", "小巧显眼的玉簪钗，带在身上也算值钱。", 1, { type: "goods", value: 42, canSteal: true }),
+  item("dali-heart-manual", "大理心法抄本", "客栈旧抄本整理出的基础心法，适合稳步打底。", 1, {
+    type: "manual",
+    value: 32,
+    canSell: false,
+    manualArtId: "dali-xinfa",
+    studySourceKind: "manual",
+    routeKey: "wis",
+    accessLevel: "manual",
+    requiredProgress: 3
+  })
 ];
 
 export const defaultMartialArts = {
@@ -123,7 +139,9 @@ export const defaultMartialArts = {
   ],
   jianghu: [
     art("jianghu-daolu", "江湖刀路", "external", "str", "1d6", "刀法直接，适合抢身位与逼退对手。", 0, { grade: "粗豪", source: "江湖旧路" }),
-    art("kuaidao-xiaojia", "快刀小架", "external", "dex", "1d6", "短刀小架简洁利落，专为近身抢位开门。", 0, { grade: "入门", source: "江湖旧路" })
+    art("kuaidao-xiaojia", "快刀小架", "external", "dex", "1d6", "短刀小架简洁利落，专为近身抢位开门。", 0, { grade: "入门", source: "江湖旧路" }),
+    art("tuna-fa", "吐纳法", "internal", "wis", "1d4", "吐纳导气，稳住周天运转，适合前期调息与以内劲试手。", 0, { grade: "入门", source: "江湖吐纳旧本" }),
+    art("renxue-shou", "认穴手", "external", "int", "1d4", "先认经脉落点，再以巧劲点穴制敌，适合早期悟性路线起手。", 0, { grade: "入门", source: "江湖点穴散手" })
   ],
   shaolin: [
     art("shaolin-changquan", "少林长拳", "external", "str", "1d4", "拳架平正，适合稳步压近。", 0, { grade: "正宗", source: "少林" }),
@@ -147,7 +165,8 @@ export const defaultMartialArts = {
   ],
   xingxiu: [
     art("xingxiu-duzhang", "星宿毒掌", "internal", "con", "1d8", "掌风夹杂邪气，贴身最是阴损。", 1, { grade: "熟练", source: "星宿派" }),
-    art("sanyin-wugong-zhua", "三阴蜈蚣爪", "external", "dex", "1d8", "爪法刁钻歹毒，专取近身要害。", 0, { grade: "熟练", source: "星宿派" })
+    art("sanyin-wugong-zhua", "三阴蜈蚣爪", "external", "dex", "1d8", "爪法刁钻歹毒，专取近身要害。", 0, { grade: "熟练", source: "星宿派" }),
+    art("zhaixing-shou", "摘星手残式", "external", "dex", "1d10", "先从残式里拆最险的一路探拿锁扣，走的是刁钻险路。", 1, { grade: "上乘前置", source: "星宿密册残页" })
   ],
   xiaoyao: [
     art("xiaoyao-zhang", "逍遥掌", "internal", "wis", "1d8", "掌力绵里藏针，看似轻缓却能透劲。", 1, { grade: "熟练", source: "逍遥派" }),
@@ -369,13 +388,15 @@ export const merchantProfiles: MerchantProfile[] = [
     stock: [
       { itemId: "medicine", count: 4 },
       { itemId: "qi-pill", count: 2 },
+      { itemId: "yangluo-powder", count: 2 },
+      { itemId: "dali-heart-manual", count: 1 },
       { itemId: "dried-meat", count: 5 },
       { itemId: "cloth-wrap", count: 3 },
       { itemId: "lamp-oil", count: 2 }
     ],
     buyFromPlayerMultiplier: 0.5,
     sellToPlayerMultiplier: 1.05,
-    greetingText: "瀹㈡爤閲岀殑鏃ョ敤闆剁墿锛岄兘鍦ㄨ繖閲屻€?"
+    greetingText: "客栈里常用的伤药和杂货，都在这里。"
   }
 ];
 
@@ -542,6 +563,12 @@ export const initialGameState: GameState = {
   combat: { active: false },
   systemLog: ["系统：首轮行动后才会正式派发第一条任务。"],
   sceneType: "inn",
+  pendingStudies: [],
+  studySources: [],
+  qiGrowthBonus: 0,
+  qiBreakthroughCap: 2,
+  qiTrainingProgress: 0,
+  availableAttributeInsights: [],
   economy: buildInitialEconomyState(),
   objective: { title: "入局引导", text: "先在客栈落脚，看看掌柜、双儿和无量山的风声。", location: "大理城" }
 };

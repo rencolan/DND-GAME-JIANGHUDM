@@ -2,6 +2,7 @@ import { enemyPresets, initialGameState, itemCatalog, martialArtCatalog, originT
 import { normalizeChapterStateForNameless } from "../story/namelessWanderer";
 import { abilityModifier, recalculateCharacterDerivedStats } from "../rules";
 import type {
+  AttributeInsight,
   ChapterState,
   Character,
   GamePatch,
@@ -17,7 +18,10 @@ import type {
   QuestStateNode,
   RelationshipRouteState,
   RollMode,
-  Rumor
+  Rumor,
+  StudyEntry,
+  StudySourceKind,
+  StudySourceState
 } from "../../types";
 
 const SETUP_KEY = "jianghu-dm-has-played-v2";
@@ -189,6 +193,69 @@ function normalizeMartialArt(raw: Partial<MartialArt> & { name: string }): Marti
   };
 }
 
+function normalizeStudyEntry(raw: Partial<StudyEntry> & { artId?: string; name: string }): StudyEntry {
+  const template = martialLookup.get(raw.artId || raw.name || "") || martialLookup.get(raw.name);
+  const category = raw.category || template?.category || "external";
+  const sourceKind: StudySourceKind = raw.sourceKind || "onsite";
+  return {
+    id: raw.id || uid("study"),
+    artId: raw.artId || template?.id || uid("art-ref"),
+    name: raw.name,
+    category,
+    linkedAbility: raw.linkedAbility || template?.linkedAbility || (category === "internal" ? "wis" : "int"),
+    sourceKind,
+    stage: raw.stage && raw.stage !== "mastered" ? raw.stage : "discovered",
+    progress: Math.max(0, raw.progress || 0),
+    requiredProgress: Math.max(1, raw.requiredProgress || 3),
+    dangerous: raw.dangerous,
+    sourceLabel: raw.sourceLabel,
+    locationId: raw.locationId,
+    tier: raw.tier,
+    routeKey: raw.routeKey,
+    accessLevel: raw.accessLevel,
+    hidden: raw.hidden,
+    fortuneGate: raw.fortuneGate
+  };
+}
+
+function normalizeStudyEntries(raw: StudyEntry[] | undefined) {
+  return (raw || []).map((entry) => normalizeStudyEntry(entry));
+}
+
+function normalizeStudySource(raw: Partial<StudySourceState> & { artId?: string; name: string; locationId: string }): StudySourceState {
+  return {
+    id: raw.id || uid("source"),
+    locationId: raw.locationId,
+    artId: raw.artId || uid("art-ref"),
+    name: raw.name,
+    discovered: raw.discovered ?? true,
+    portable: raw.portable ?? false,
+    dangerous: raw.dangerous,
+    sourceLabel: raw.sourceLabel,
+    cooldownUntilActionCount: raw.cooldownUntilActionCount,
+    requiresSceneRefresh: raw.requiresSceneRefresh ?? false,
+    refreshedSinceFailure: raw.refreshedSinceFailure ?? false,
+    tier: raw.tier,
+    routeKey: raw.routeKey,
+    accessLevel: raw.accessLevel,
+    hidden: raw.hidden,
+    requiredProgress: raw.requiredProgress,
+    fortuneGate: raw.fortuneGate
+  };
+}
+
+function normalizeStudySources(raw: StudySourceState[] | undefined) {
+  return (raw || []).map((source) => normalizeStudySource(source));
+}
+
+function normalizeAttributeInsights(raw: AttributeInsight[] | undefined) {
+  return (raw || []).map((entry) => ({
+    id: entry.id || uid("insight"),
+    choices: [...new Set((entry.choices || []).filter(Boolean))],
+    reason: entry.reason
+  }));
+}
+
 function normalizeInventory(raw: Item[] | undefined) {
   return (raw || [])
     .filter((item) => {
@@ -198,9 +265,15 @@ function normalizeInventory(raw: Item[] | undefined) {
     .map((item) => {
       const template = itemLookup.get(item.id) || itemLookup.get(item.name);
       const legacyType = (item as { type?: string }).type;
-      const inferredType: Item["type"] = legacyType === "quest"
+      const inferredType: Item["type"] = legacyType === "manual" || template?.type === "manual"
+        ? "manual"
+        : legacyType === "quest"
         ? "quest"
-        : legacyType === "consumable" || item.usable || typeof item.hpRestore === "number" || typeof item.qiRestore === "number"
+        : legacyType === "consumable"
+          || item.usable
+          || typeof item.hpRestore === "number"
+          || typeof item.qiRestore === "number"
+          || typeof item.innerInjuryRestore === "number"
           ? "consumable"
           : legacyType === "goods" || template?.type === "goods"
             ? "goods"
@@ -214,9 +287,19 @@ function normalizeInventory(raw: Item[] | undefined) {
         value: item.value ?? template?.value ?? 0,
         hpRestore: item.hpRestore,
         qiRestore: item.qiRestore,
+        innerInjuryRestore: item.innerInjuryRestore ?? template?.innerInjuryRestore,
         usable: item.usable,
         canSell: item.canSell ?? template?.canSell,
-        canSteal: item.canSteal ?? template?.canSteal
+        canSteal: item.canSteal ?? template?.canSteal,
+        manualArtId: item.manualArtId ?? template?.manualArtId,
+        studySourceKind: item.studySourceKind ?? template?.studySourceKind,
+        dangerous: item.dangerous ?? template?.dangerous,
+        tier: item.tier ?? template?.tier,
+        routeKey: item.routeKey ?? template?.routeKey,
+        accessLevel: item.accessLevel ?? template?.accessLevel,
+        hidden: item.hidden ?? template?.hidden,
+        requiredProgress: item.requiredProgress ?? template?.requiredProgress,
+        fortuneGate: item.fortuneGate ?? template?.fortuneGate
       };
     });
 }
@@ -241,7 +324,7 @@ function normalizeEconomy(raw: GameState["economy"] | undefined, fallback: GameS
   };
 }
 
-function relabelAbilities(character: Character): Character {
+function relabelAbilities(character: Character, qiGrowthBonus = 0): Character {
   const {
     inventory,
     equipment: _legacyEquipment,
@@ -261,7 +344,7 @@ function relabelAbilities(character: Character): Character {
       relabeled.abilities.find((ability) => ability.key === "wis")?.value ?? 10
     ));
 
-  return recalculateCharacterDerivedStats(relabeled, baseQi);
+  return recalculateCharacterDerivedStats(relabeled, baseQi, qiGrowthBonus);
 }
 
 function fallbackObjective(state: GameState) {
@@ -286,6 +369,7 @@ function makePendingCheck(raw: GamePatch["pendingCheck"]): PendingCheck | undefi
   if (!raw?.label || typeof raw.dc !== "number") return undefined;
   return {
     id: uid("check"),
+    kind: raw.kind,
     label: raw.label,
     abilityKey: raw.abilityKey,
     martialArtId: raw.martialArtId,
@@ -299,6 +383,7 @@ function makePendingCheck(raw: GamePatch["pendingCheck"]): PendingCheck | undefi
 }
 
 function isInitiativePendingCheck(check?: PendingCheck) {
+  if (check?.kind === "initiative") return true;
   if (!check?.label) return false;
   return check.label.includes("抢先手") || check.label.includes("先攻");
 }
@@ -356,6 +441,7 @@ function makeEnemyCombat(name = "黑衣刺客"): GameState["combat"] {
       { key: "wis", label: abilityLabels.wis, value: preset.abilities.wis }
     ],
     enemyMartialArts: preset.martialArts.map((art) => normalizeMartialArt({ ...art, name: art.name })),
+    enemyInnerInjury: 0,
     enemyStatus: []
   };
 }
@@ -376,6 +462,7 @@ function normalizeCombat(combat: GameState["combat"] | undefined): GameState["co
     enemyMartialArts: (combat.enemyMartialArts || normalized.enemyMartialArts || []).map((art) =>
       normalizeMartialArt({ ...art, name: art.name })
     ),
+    enemyInnerInjury: combat.enemyInnerInjury ?? normalized.enemyInnerInjury ?? 0,
     enemyStatus: combat.enemyStatus || [],
     combatId: combat.combatId || normalized.combatId,
     round: combat.round ?? normalized.round,
@@ -457,13 +544,21 @@ function updateRelationshipRoute(next: GameState, update: Partial<RelationshipRo
 export function normalizeGameState(raw: GameState): GameState {
   const base = structuredClone(initialGameState);
   const current = raw || base;
+  const qiGrowthBonus = clamp(current.qiGrowthBonus ?? base.qiGrowthBonus ?? 0, 0, 6);
+  const qiBreakthroughCap = clamp(current.qiBreakthroughCap ?? base.qiBreakthroughCap ?? 2, 0, 6);
+  const qiTrainingProgress = clamp(current.qiTrainingProgress ?? base.qiTrainingProgress ?? 0, 0, 99);
 
-  const character = relabelAbilities(current.character || base.character);
-  const roster = (current.roster || [character]).map(relabelAbilities);
+  const character = relabelAbilities(current.character || base.character, qiGrowthBonus);
+  const roster = (current.roster || [character]).map((member) => relabelAbilities(member, qiGrowthBonus));
   const locations = (current.locations || base.locations).map((location) => ({ ...location }));
   const combat = normalizeCombat(current.combat || base.combat);
   const pendingCheck = current.pendingCheck ? makePendingCheck(current.pendingCheck) : undefined;
   const pendingDamage = current.pendingDamage ? makePendingDamage(current.pendingDamage) : undefined;
+  const pendingStudies = normalizeStudyEntries(current.pendingStudies || base.pendingStudies);
+  const studySources = normalizeStudySources(current.studySources || base.studySources);
+  const availableAttributeInsights = normalizeAttributeInsights(
+    current.availableAttributeInsights || base.availableAttributeInsights
+  );
   if (!locations.some((location) => location.current) && locations[0]) {
     locations[0].current = true;
   }
@@ -537,7 +632,13 @@ export function normalizeGameState(raw: GameState): GameState {
     }),
     pendingCheck,
     pendingDamage,
-    innerInjury: current.innerInjury || 0
+    innerInjury: current.innerInjury || 0,
+    pendingStudies,
+    studySources,
+    qiGrowthBonus,
+    qiBreakthroughCap,
+    qiTrainingProgress,
+    availableAttributeInsights
   };
 }
 
@@ -545,7 +646,13 @@ function normalizePatchedItem(raw: Partial<Item> & { name: string }): Item {
   const template = itemLookup.get(raw.id || "") || itemLookup.get(raw.name);
   const inferredType: Item["type"] = raw.type
     || template?.type
-    || (raw.usable || typeof raw.hpRestore === "number" || typeof raw.qiRestore === "number"
+    || (raw.manualArtId || template?.manualArtId
+      ? "manual"
+      : undefined)
+    || (raw.usable
+      || typeof raw.hpRestore === "number"
+      || typeof raw.qiRestore === "number"
+      || typeof raw.innerInjuryRestore === "number"
       ? "consumable"
       : "quest");
 
@@ -559,8 +666,12 @@ function normalizePatchedItem(raw: Partial<Item> & { name: string }): Item {
     usable: raw.usable ?? template?.usable,
     hpRestore: raw.hpRestore ?? template?.hpRestore,
     qiRestore: raw.qiRestore ?? template?.qiRestore,
+    innerInjuryRestore: raw.innerInjuryRestore ?? template?.innerInjuryRestore,
     canSell: raw.canSell ?? template?.canSell,
-    canSteal: raw.canSteal ?? template?.canSteal
+    canSteal: raw.canSteal ?? template?.canSteal,
+    manualArtId: raw.manualArtId ?? template?.manualArtId,
+    studySourceKind: raw.studySourceKind ?? template?.studySourceKind,
+    dangerous: raw.dangerous ?? template?.dangerous
   };
 }
 
@@ -586,6 +697,63 @@ function applyInventoryDelta(hero: Character, change: NonNullable<GamePatch["ite
   hero.inventory = hero.inventory.filter((item) => item.count > 0);
 }
 
+function applyStudyAdditions(next: GameState, additions: StudyEntry[] | undefined) {
+  for (const entry of additions || []) {
+    const normalized = normalizeStudyEntry(entry);
+    const index = next.pendingStudies.findIndex((study) => study.id === normalized.id || study.artId === normalized.artId);
+    if (index >= 0) {
+      next.pendingStudies[index] = {
+        ...next.pendingStudies[index],
+        ...normalized,
+        id: next.pendingStudies[index].id
+      };
+    } else {
+      next.pendingStudies.push(normalized);
+    }
+  }
+}
+
+function applyStudyUpdates(next: GameState, updates: Array<Partial<StudyEntry> & { id: string }> | undefined) {
+  for (const update of updates || []) {
+    const index = next.pendingStudies.findIndex((study) => study.id === update.id);
+    if (index < 0) continue;
+    next.pendingStudies[index] = normalizeStudyEntry({
+      ...next.pendingStudies[index],
+      ...update,
+      name: update.name || next.pendingStudies[index].name
+    });
+  }
+}
+
+function applyStudySourceAdditions(next: GameState, additions: StudySourceState[] | undefined) {
+  for (const source of additions || []) {
+    const normalized = normalizeStudySource(source);
+    const index = next.studySources.findIndex((entry) => entry.id === normalized.id || entry.artId === normalized.artId);
+    if (index >= 0) {
+      next.studySources[index] = {
+        ...next.studySources[index],
+        ...normalized,
+        id: next.studySources[index].id
+      };
+    } else {
+      next.studySources.push(normalized);
+    }
+  }
+}
+
+function applyStudySourceUpdates(next: GameState, updates: Array<Partial<StudySourceState> & { id: string }> | undefined) {
+  for (const update of updates || []) {
+    const index = next.studySources.findIndex((source) => source.id === update.id);
+    if (index < 0) continue;
+    next.studySources[index] = normalizeStudySource({
+      ...next.studySources[index],
+      ...update,
+      name: update.name || next.studySources[index].name,
+      locationId: update.locationId || next.studySources[index].locationId
+    });
+  }
+}
+
 export function applyPatchToState(prev: GameState, patch: GamePatch): GameState {
   const next = normalizeGameState(structuredClone(prev));
   const hero = next.character;
@@ -593,9 +761,19 @@ export function applyPatchToState(prev: GameState, patch: GamePatch): GameState 
   if (patch.hpChange) hero.hp = clamp(hero.hp + patch.hpChange, 0, hero.maxHp);
   if (patch.qiChange) hero.qi = clamp(hero.qi + patch.qiChange, 0, hero.maxQi);
   if (patch.qiRecovery) hero.qi = clamp(hero.qi + patch.qiRecovery, 0, hero.maxQi);
+  if (patch.qiGrowthBonusChange) {
+    next.qiGrowthBonus = clamp((next.qiGrowthBonus || 0) + patch.qiGrowthBonusChange, 0, 6);
+  }
+  if (patch.qiBreakthroughCapChange) {
+    next.qiBreakthroughCap = clamp((next.qiBreakthroughCap || 0) + patch.qiBreakthroughCapChange, 0, 6);
+  }
+  if (patch.qiTrainingProgressChange) {
+    next.qiTrainingProgress = Math.max(0, (next.qiTrainingProgress || 0) + patch.qiTrainingProgressChange);
+  }
   if (patch.qiMaxChange) {
     hero.maxQi = clamp(hero.maxQi + patch.qiMaxChange, 0, 99);
     hero.qi = clamp(hero.qi, 0, hero.maxQi);
+    next.qiGrowthBonus = clamp((next.qiGrowthBonus || 0) + patch.qiMaxChange, 0, 6);
   }
   if (patch.innerInjuryChange) {
     next.innerInjury = clamp((next.innerInjury || 0) + patch.innerInjuryChange, 0, 100);
@@ -611,22 +789,10 @@ export function applyPatchToState(prev: GameState, patch: GamePatch): GameState 
   }
 
   if (patch.newItem?.name) {
-    const newItem: Item = {
-      id: patch.newItem.id || uid("item"),
-      name: patch.newItem.name,
-      desc: patch.newItem.desc || "新得之物，尚待派上用场。",
-      count: patch.newItem.count || 1,
-      type: patch.newItem.type
-        || (patch.newItem.usable || typeof patch.newItem.hpRestore === "number" || typeof patch.newItem.qiRestore === "number"
-          ? "consumable"
-          : "quest"),
-      value: patch.newItem.value ?? 0,
-      usable: patch.newItem.usable,
-      hpRestore: patch.newItem.hpRestore,
-      qiRestore: patch.newItem.qiRestore,
-      canSell: patch.newItem.canSell,
-      canSteal: patch.newItem.canSteal
-    };
+    const createdItem = normalizePatchedItem({ ...patch.newItem, name: patch.newItem.name });
+    const existing = hero.inventory.find((item) => item.id === createdItem.id || item.name === createdItem.name);
+    if (existing) existing.count += createdItem.count;
+    else hero.inventory.push(createdItem);
   }
 
   if (patch.removeItemId) {
@@ -635,6 +801,35 @@ export function applyPatchToState(prev: GameState, patch: GamePatch): GameState 
 
   if (patch.itemChanges) {
     patch.itemChanges.forEach((change) => applyInventoryDelta(hero, change));
+  }
+
+  if (patch.studyAdd) {
+    applyStudyAdditions(next, patch.studyAdd);
+  }
+  if (patch.studyUpdate) {
+    applyStudyUpdates(next, patch.studyUpdate);
+  }
+  if (patch.studyRemoveIds?.length) {
+    const removed = new Set(patch.studyRemoveIds);
+    next.pendingStudies = next.pendingStudies.filter((study) => !removed.has(study.id));
+  }
+  if (patch.studySourceAdd) {
+    applyStudySourceAdditions(next, patch.studySourceAdd);
+  }
+  if (patch.studySourceUpdate) {
+    applyStudySourceUpdates(next, patch.studySourceUpdate);
+  }
+  if (patch.attributeInsightAdd?.length) {
+    const seen = new Set(next.availableAttributeInsights.map((entry) => entry.id));
+    for (const insight of normalizeAttributeInsights(patch.attributeInsightAdd)) {
+      if (seen.has(insight.id)) continue;
+      next.availableAttributeInsights.push(insight);
+      seen.add(insight.id);
+    }
+  }
+  if (patch.attributeInsightRemoveIds?.length) {
+    const removed = new Set(patch.attributeInsightRemoveIds);
+    next.availableAttributeInsights = next.availableAttributeInsights.filter((entry) => !removed.has(entry.id));
   }
 
   if (patch.economyUpdate) {
@@ -697,6 +892,7 @@ export function applyPatchToState(prev: GameState, patch: GamePatch): GameState 
     combat.enemyHp = clamp((combat.enemyHp || 0) + (patch.combatUpdate.enemyHpChange || 0), 0, combat.enemyMaxHp || 1);
     combat.enemyQi = clamp((combat.enemyQi || 0) + (patch.combatUpdate.enemyQiChange || 0) - enemyQiCost, 0, combat.enemyMaxQi || 1);
     combat.enemyAc = Math.max(0, (combat.enemyAc || 0) + (patch.combatUpdate.enemyAcChange || 0));
+    combat.enemyInnerInjury = clamp((combat.enemyInnerInjury || 0) + (patch.combatUpdate.enemyInnerInjuryChange || 0), 0, 100);
     const status = new Set(combat.enemyStatus || []);
     patch.combatUpdate.enemyStatusAdd?.forEach((item) => status.add(item));
     patch.combatUpdate.enemyStatusRemove?.forEach((item) => status.delete(item));
@@ -832,9 +1028,11 @@ export function applyPatchToState(prev: GameState, patch: GamePatch): GameState 
   next.locationUnlocks = normalizeLocationUnlocks(next.locations, next.locationUnlocks, initialGameState.locationUnlocks);
   next.npcStoryState = normalizeNpcStoryState(next.npcs, next.npcStoryState, initialGameState.npcStoryState);
   next.relationshipRoutes = normalizeRelationshipRoutes(next.npcs, next.relationshipRoutes, initialGameState.relationshipRoutes);
-  next.character = relabelAbilities(hero);
+  next.character = relabelAbilities(hero, next.qiGrowthBonus || 0);
   next.roster = (next.roster || []).map((member) =>
-    member.id === next.currentCharacterId ? structuredClone(next.character) : relabelAbilities(member)
+    member.id === next.currentCharacterId
+      ? structuredClone(next.character)
+      : relabelAbilities(member, next.qiGrowthBonus || 0)
   );
 
   return normalizeGameState(next);
