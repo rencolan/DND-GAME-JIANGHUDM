@@ -11,15 +11,21 @@ import {
   withSceneFallback
 } from "../game/ai/helpers";
 import { buildCombatEscapeIntentPrompt, buildCombatNarrationPrompt, buildSystemPrompt } from "../game/ai/prompt";
-import { buildCombatEscapeCheck, doubleDamageDice, prepareCombatDamageRoll, startCombat } from "../game/combat";
+import { buildCombatEscapeCheck, doubleDamageDice, prepareCombatDamageRoll, resolveEnemyTurn, startCombat } from "../game/combat";
 import { applyPatchToState, normalizeGameState } from "../game/engine";
 import { localDm } from "../game/localdm";
 import {
   abilityModifier,
   abilityValue,
   calculateInnerInjuryPressure,
+  hasMartialTag,
+  internalStylePracticeThreshold,
+  internalStyleRiskLevel,
   injuryTickDamage,
   injuryTierLabel,
+  martialTagLabels,
+  proficiencyBonus,
+  qiGrowthForInternalMastery,
   resolveInnerInjuryDelta
 } from "../game/rules";
 import { isEconomyTextId, tryResolveEconomyAction } from "../game/world/economySystem";
@@ -190,13 +196,15 @@ function buildEscapeSummary(enemyName: string, hit: ReturnType<typeof parseComba
   ]);
 }
 
-function buildPlayerDamageSummary(enemyName: string, label: string, damageTotal: number, enemyHpBefore?: number, enemyHpAfter?: number, isCritical?: boolean) {
+function buildPlayerDamageSummary(enemyName: string, label: string, damageTotal: number, enemyHpBefore?: number, enemyHpAfter?: number, isCritical?: boolean, art?: MartialArt) {
   const hpLine = typeof enemyHpBefore === "number" && typeof enemyHpAfter === "number"
     ? `${enemyName} HP：${enemyHpBefore} → ${enemyHpAfter}`
     : undefined;
+  const tags = martialTagLabels(art);
   return buildCombatSummaryMessage("伤害结果", [
     `${label} 对 ${enemyName} 造成 ${damageTotal} 点伤害${isCritical ? "（暴击）" : ""}。`,
-    ...(hpLine ? [hpLine] : [])
+    ...(hpLine ? [hpLine] : []),
+    ...(tags.length ? [`效果：${tags.join(" / ")}${art?.effectText ? ` · ${art.effectText}` : ""}`] : [])
   ]);
 }
 
@@ -257,7 +265,6 @@ const MEDITATION_ACTION_KEYWORDS = ["调息", "运气疗伤", "静坐疗伤"];
 const INN_REST_ACTION_KEYWORDS = ["休息", "住店", "歇一晚"];
 
 const STUDY_SUCCESS_TARGET = 3;
-const QI_GROWTH_HARD_CAP = 6;
 
 function currentLocationId(state: GameState) {
   return state.locations.find((location) => location.current)?.id;
@@ -302,6 +309,20 @@ function buildStudyEntryFromArt(
     hidden: options.hidden,
     fortuneGate: options.fortuneGate
   };
+}
+
+function qiGrowthByArt(art: MartialArt) {
+  switch (art.grade) {
+    case "绝学":
+      return 3;
+    case "高阶":
+    case "宗师":
+    case "家传":
+    case "上乘前置":
+      return 2;
+    default:
+      return 1;
+  }
 }
 
 function buildEnemyTurnSummary(enemyName: string, details: EnemyTurnSummaryDetails) {
@@ -446,9 +467,26 @@ export function useGameSession() {
     }
 
     let finalState = patchedState;
+    const playerStatuses = patchedState.combat.playerStatus || [];
+    if (!options.skipTick && playerStatuses.includes("poisoned") && patchedState.character.hp > 0) {
+      finalState = applyPatchToState(finalState, { hpChange: -1 });
+      messages.push({
+        id: uid("system"),
+        role: "system",
+        text: "【中毒】毒性随行动发作，气血 -1。可用解毒丹解除。"
+      });
+    }
+    if (!options.skipTick && playerStatuses.includes("cold") && patchedState.character.qi > 0) {
+      finalState = applyPatchToState(finalState, { qiChange: -1 });
+      messages.push({
+        id: uid("system"),
+        role: "system",
+        text: "【寒毒】寒意压住内息，真气 -1。可用解毒丹解除。"
+      });
+    }
     const tick = injuryTickDamage(playerInnerAfter);
     if (!options.skipTick && tick > 0 && patchedState.character.hp > 0) {
-      finalState = applyPatchToState(patchedState, { hpChange: -tick });
+      finalState = applyPatchToState(finalState, { hpChange: -tick });
       messages.push({
         id: uid("system"),
         role: "system",
@@ -499,6 +537,124 @@ export function useGameSession() {
       ...prev,
       messages: [...prev.messages, { id: uid("system"), role: "system", text }]
     }));
+  }
+
+  function applyDevPatch(prev: GameState, patch: GamePatch, message: string) {
+    const patched = applyPatchToState(prev, patch);
+    return {
+      ...patched,
+      messages: [...patched.messages, { id: uid("system"), role: "system" as const, text: message }]
+    };
+  }
+
+  function devStartCombat(enemyName: string) {
+    setGame((prev) => applyDevPatch(
+      prev,
+      startCombat(prev, enemyName, {
+        skipInitiative: true,
+        systemNote: `开发面板生成战斗：${enemyName}`
+      }),
+      `【开发面板】已生成战斗：${enemyName}`
+    ));
+    setActiveTab("system");
+  }
+
+  function devEndCombat() {
+    setGame((prev) => applyDevPatch(
+      prev,
+      {
+        combatAction: "exit",
+        pendingCheck: undefined,
+        pendingDamage: undefined,
+        systemNote: "开发面板结束当前战斗"
+      },
+      "【开发面板】已结束当前战斗，并清理待判定/待伤害。"
+    ));
+  }
+
+  function devRecoverHero() {
+    setGame((prev) => {
+      const hpChange = Math.max(0, prev.character.maxHp - prev.character.hp);
+      const qiChange = Math.max(0, prev.character.maxQi - prev.character.qi);
+      const innerInjuryChange = -(prev.innerInjury || 0);
+      return applyDevPatch(
+        prev,
+        {
+          hpChange,
+          qiChange,
+          innerInjuryChange,
+          systemNote: "开发面板恢复角色状态"
+        },
+        "【开发面板】角色 HP、真气和内伤已恢复到便于测试的状态。"
+      );
+    });
+  }
+
+  function devGrantMartialArt(artId: string) {
+    const art = findArtTemplate(artId);
+    if (!art) {
+      pushSystemMessage("【开发面板】找不到这门武学。");
+      return;
+    }
+
+    setGame((prev) => {
+      if (prev.character.martialArts.some((entry) => entry.id === art.id || entry.name === art.name)) {
+        return {
+          ...prev,
+          messages: [...prev.messages, { id: uid("system"), role: "system", text: `【开发面板】${art.name} 已掌握。` }]
+        };
+      }
+
+      return applyDevPatch(
+        prev,
+        {
+          martialArtLearned: art,
+          systemNote: `开发面板授予武学：${art.name}`
+        },
+        `【开发面板】已授予武学：${art.name}`
+      );
+    });
+  }
+
+  function devGrantInternalManual(artId: string) {
+    const art = findArtTemplate(artId);
+    if (!art || art.category !== "internal") {
+      pushSystemMessage("【开发面板】只能授予内功秘籍。");
+      return;
+    }
+
+    const manualName = `${art.name}秘笈`;
+    setGame((prev) => applyDevPatch(
+      prev,
+      {
+        newItem: {
+          id: `dev-manual-${art.id}`,
+          name: manualName,
+          desc: `开发面板生成的 ${art.name} 修炼用秘籍。`,
+          count: 1,
+          type: "manual",
+          value: 80,
+          manualArtId: art.id,
+          studySourceKind: "manual",
+          canSell: false,
+          usable: false,
+          dangerous: art.tags?.includes("injure")
+        },
+        systemNote: `开发面板授予内功秘籍：${manualName}`
+      },
+      `【开发面板】已放入行囊：${manualName}`
+    ));
+  }
+
+  function devRaiseCultivationRank() {
+    setGame((prev) => applyDevPatch(
+      prev,
+      {
+        cultivationRankChange: 1,
+        systemNote: "开发面板提升修为"
+      },
+      `【开发面板】修为提升：Rank ${prev.cultivationRank || 1} → ${(prev.cultivationRank || 1) + 1}`
+    ));
   }
 
   useEffect(() => {
@@ -1013,7 +1169,18 @@ export function useGameSession() {
 
     const tutorialMode = isTutorialCombatGame(game);
     const hit = parseCombatHitResult(hitText);
-    const pendingDamagePatch = prepareCombatDamageRoll(art, hitText, qiBonusSpend, isCritical, game.character);
+    const basePendingDamagePatch = prepareCombatDamageRoll(art, hitText, qiBonusSpend, isCritical, game.character);
+    const sealedQiSurcharge = game.combat.playerStatus?.includes("sealed") && art.category === "internal" ? 1 : 0;
+    const pendingDamagePatch = sealedQiSurcharge && basePendingDamagePatch.pendingDamage
+      ? {
+        ...basePendingDamagePatch,
+        pendingDamage: {
+        ...basePendingDamagePatch.pendingDamage,
+          qiCost: (basePendingDamagePatch.pendingDamage.qiCost || 0) + sealedQiSurcharge
+        },
+        systemNote: "封脉压住内息，本次内功额外耗气 1。"
+      }
+      : basePendingDamagePatch;
     const stagedPatch = tutorialMode
       ? {
         ...pendingDamagePatch,
@@ -1034,7 +1201,7 @@ export function useGameSession() {
     const nextStepMessage: Message = {
       id: uid("system"),
       role: "system",
-      text: `命中已确认，请掷 ${art.name} 的伤害骰：${art.damageDice}${art.damageBonus ? ` +${art.damageBonus}` : ""}`
+      text: `命中已确认，请掷 ${art.name} 的伤害骰：${art.damageDice}${art.damageBonus ? ` +${art.damageBonus}` : ""}${sealedQiSurcharge ? "。封脉使本次内功额外耗气 1" : ""}`
     };
 
     tryPlayMusic();
@@ -1149,7 +1316,8 @@ export function useGameSession() {
           damage.total,
           actionState.combat.enemyHp,
           playerState.combat.enemyHp,
-          Boolean(pendingDamage.isCritical)
+          Boolean(pendingDamage.isCritical),
+          actionState.character.martialArts.find((art) => art.id === pendingDamage.martialArtId)
         )
       }
     ];
@@ -1654,6 +1822,15 @@ export function useGameSession() {
       if (target.hpRestore) next.character.hp = clamp(next.character.hp + target.hpRestore, 0, next.character.maxHp);
       if (target.qiRestore) next.character.qi = clamp(next.character.qi + target.qiRestore, 0, next.character.maxQi);
       if (target.innerInjuryRestore) next.innerInjury = clamp((next.innerInjury || 0) - target.innerInjuryRestore, 0, 100);
+      if (target.grantsStatus?.length && next.combat.active) {
+        const statuses = new Set(next.combat.playerStatus || []);
+        target.grantsStatus.forEach((status) => statuses.add(status));
+        next.combat.playerStatus = [...statuses];
+      }
+      if (target.curesStatus?.length && next.combat.active) {
+        const cures = new Set(target.curesStatus);
+        next.combat.playerStatus = (next.combat.playerStatus || []).filter((status) => !cures.has(status));
+      }
       target.count -= 1;
       next.character.inventory = next.character.inventory.filter((entry) => entry.count > 0);
       next.systemLog.push(`使用：${item.name}`);
@@ -1661,10 +1838,24 @@ export function useGameSession() {
         `【使用物品】${item.name}`,
         ...(next.character.hp !== hpBefore ? [`HP：${hpBefore} → ${next.character.hp}`] : []),
         ...(next.character.qi !== qiBefore ? [`Qi：${qiBefore} → ${next.character.qi}`] : []),
-        ...((next.innerInjury || 0) !== innerBefore ? [`内伤：${innerBefore} → ${next.innerInjury || 0}`] : [])
+        ...((next.innerInjury || 0) !== innerBefore ? [`内伤：${innerBefore} → ${next.innerInjury || 0}`] : []),
+        ...(target.grantsStatus?.length && next.combat.active ? [`获得状态：${target.grantsStatus.join("、")}`] : []),
+        ...(target.curesStatus?.length && next.combat.active ? [`解除状态：${target.curesStatus.join("、")}`] : []),
+        ...(next.combat.active && target.combatActionCost !== 0 ? ["战斗中使用物品消耗这一手，敌人会接续出招。"] : [])
       ].join("\n");
       next.messages.push({ id: uid("system"), role: "system", text: summary });
-      return next;
+
+      if (!next.combat.active || target.combatActionCost === 0) return normalizeGameState(next);
+
+      const enemyTurn = resolveEnemyTurn(normalizeGameState(next));
+      const afterEnemy = applyPatchToState(next, enemyTurn.patch);
+      return {
+        ...afterEnemy,
+        messages: [
+          ...afterEnemy.messages,
+          { id: uid("system"), role: "system", text: buildEnemyTurnSummary(afterEnemy.combat.enemy || next.combat.enemy || "敌人", enemyTurn.details) }
+        ]
+      };
     });
   }
 
@@ -1691,7 +1882,6 @@ export function useGameSession() {
       }
 
       const patched = applyPatchToState(prev, {
-        itemChanges: [{ itemId: manual.id, delta: -1 }],
         studyAdd: [
           buildStudyEntryFromArt(
             art,
@@ -1726,7 +1916,7 @@ export function useGameSession() {
 
     const abilityKey = study.category === "internal" ? "wis" : "int";
     const dc = study.category === "internal" ? 13 : 12;
-    const mod = abilityModifier(abilityValue(game.character.abilities, abilityKey));
+    const mod = abilityModifier(abilityValue(game.character.abilities, abilityKey)) + proficiencyBonus(game.cultivationRank);
     const abilityLabel = game.character.abilities.find((entry) => entry.key === abilityKey)?.label || abilityKey.toUpperCase();
 
     lockUi(1800);
@@ -1738,7 +1928,7 @@ export function useGameSession() {
       resolution: {
         mode: "first",
         bonus: mod,
-        bonusLabel: `${abilityLabel} ${mod >= 0 ? "+" : ""}${mod}`
+        bonusLabel: `${abilityLabel}+修为 ${mod >= 0 ? "+" : ""}${mod}`
       },
       settleMode: "engine"
     }, (result) => {
@@ -1821,7 +2011,7 @@ export function useGameSession() {
 
     const abilityKey = art.category === "internal" ? "wis" : "int";
     const dc = art.category === "internal" ? 13 : 12;
-    const mod = abilityModifier(abilityValue(game.character.abilities, abilityKey));
+    const mod = abilityModifier(abilityValue(game.character.abilities, abilityKey)) + proficiencyBonus(game.cultivationRank);
     const abilityLabel = game.character.abilities.find((entry) => entry.key === abilityKey)?.label || abilityKey.toUpperCase();
 
     lockUi(1800);
@@ -1833,7 +2023,7 @@ export function useGameSession() {
       resolution: {
         mode: "first",
         bonus: mod,
-        bonusLabel: `${abilityLabel} ${mod >= 0 ? "+" : ""}${mod}`
+        bonusLabel: `${abilityLabel}+修为 ${mod >= 0 ? "+" : ""}${mod}`
       },
       settleMode: "engine"
     }, (result) => {
@@ -1917,23 +2107,32 @@ export function useGameSession() {
     closePanels();
   }
 
-  function cultivateQi() {
+  function cultivateFromManual(itemId: string) {
     if (uiLocked || rolling || busy) return;
 
-    const dc = 13;
-    const mod = abilityModifier(abilityValue(game.character.abilities, "wis"));
+    const manual = game.character.inventory.find((entry) => entry.id === itemId && entry.type === "manual");
+    if (!manual?.manualArtId) return;
+
+    const art = findArtTemplate(manual.manualArtId, manual.name.replace("秘笈", ""));
+    if (!art || art.category !== "internal") {
+      pushSystemMessage("这本秘笈不是内功路数，不能拿来参照增长内力。");
+      return;
+    }
+
+    const dc = art.baseQiCost >= 2 ? 14 : 13;
+    const mod = abilityModifier(abilityValue(game.character.abilities, "wis")) + proficiencyBonus(game.cultivationRank);
     const abilityLabel = game.character.abilities.find((entry) => entry.key === "wis")?.label || "WIS";
 
     lockUi(1800);
     beginRolling({
-      label: "内功修炼",
+      label: `参照 ${art.name} 修炼`,
       notation: "1d20",
       diceGroups: buildDiceGroups("1d20"),
       animationKey: uid("roll"),
       resolution: {
         mode: "first",
         bonus: mod,
-        bonusLabel: `${abilityLabel} ${mod >= 0 ? "+" : ""}${mod}`
+        bonusLabel: `${abilityLabel}+修为 ${mod >= 0 ? "+" : ""}${mod}`
       },
       settleMode: "engine"
     }, (result) => {
@@ -1942,23 +2141,46 @@ export function useGameSession() {
       const success = naturalRoll !== 1 && total >= dc;
 
       setGame((prev) => {
+        const currentManual = prev.character.inventory.find((entry) => entry.id === itemId && entry.type === "manual");
+        if (!currentManual?.manualArtId) return prev;
+
+        const currentArt = findArtTemplate(currentManual.manualArtId, currentManual.name.replace("秘笈", ""));
+        if (!currentArt || currentArt.category !== "internal") return prev;
+
         const actionState = advanceFormalState(prev);
-        const cap = Math.min(prev.qiBreakthroughCap, QI_GROWTH_HARD_CAP);
-        const canGrow = prev.qiGrowthBonus < cap;
         const strongSuccess = total >= dc + 5;
-        const gainedProgress = success && canGrow ? 1 : 0;
-        const progressAfterGain = prev.qiTrainingProgress + gainedProgress;
-        const growthGain = success && canGrow && progressAfterGain >= 3 ? 1 : 0;
-        const progressDelta = growthGain ? -2 : gainedProgress;
+        const currentStyle = prev.internalStyles.find((entry) => entry.artId === currentArt.id);
+        const riskLevel = internalStyleRiskLevel(currentArt);
+        const currentMastery = currentStyle?.masteryLevel || 0;
+        const nextPractice = (currentStyle?.practiceCount || 0) + (success ? 1 : 0);
+        const threshold = internalStylePracticeThreshold(currentMastery);
+        const masteryUp = success && nextPractice >= threshold;
+        const nextMastery = masteryUp ? currentMastery + 1 : currentMastery;
+        const growthGain = masteryUp ? qiGrowthForInternalMastery(currentArt, nextMastery) : 0;
+        const nextStyle = {
+          artId: currentArt.id,
+          name: currentArt.name,
+          sourceItemId: currentManual.id,
+          masteryLevel: nextMastery,
+          practiceCount: masteryUp ? 0 : nextPractice,
+          totalQiGrowth: (currentStyle?.totalQiGrowth || 0) + growthGain,
+          riskLevel
+        };
         const margin = Math.max(0, dc - total);
-        const triggerInjury = shouldTriggerInternalFailureInjury(naturalRoll, margin, 0.35, 0.7);
+        const triggerInjury = shouldTriggerInternalFailureInjury(
+          naturalRoll,
+          margin,
+          Math.min(0.65, 0.25 + riskLevel * 0.08),
+          Math.min(0.9, 0.5 + riskLevel * 0.12)
+        );
         const injuryDelta = !success && triggerInjury ? resolveSelfStudyInjuryDelta(prev, "cultivation_failure") : 0;
         const qiLoss = !success && (naturalRoll === 1 || margin >= 5) ? -1 : 0;
 
         const patch: GamePatch = success
           ? {
             qiRecovery: strongSuccess ? 2 : 1,
-            qiTrainingProgressChange: progressDelta || undefined,
+            internalStyleUpdate: nextStyle,
+            activeInternalArtId: prev.activeInternalArtId || currentArt.id,
             qiGrowthBonusChange: growthGain || undefined
           }
           : {
@@ -1967,17 +2189,15 @@ export function useGameSession() {
           };
 
         const patched = applyPatchToState(actionState, patch);
-        const outcome = applyFormalActionFollowups(actionState, patched, "练功修炼");
+        const outcome = applyFormalActionFollowups(actionState, patched, `参照${currentArt.name}修炼`);
         const summaryLines = [
-          "【内功修炼】",
+          `【参照修炼】${currentArt.name}`,
           `d20=${naturalRoll} · 总计 ${total} / DC ${dc}`,
           `结果：${success ? "成功" : "失败"}`,
           success
-            ? growthGain
-              ? `Qi 上限成长 +1，当前成长 ${patched.qiGrowthBonus}/${patched.qiBreakthroughCap}。`
-              : canGrow
-                ? `修炼进度 ${patched.qiTrainingProgress}/3，当前成长 ${patched.qiGrowthBonus}/${patched.qiBreakthroughCap}。`
-                : `当前境界上限已满，先去寻突破契机。`
+            ? masteryUp
+              ? `${currentArt.name} 掌握度提升到 ${nextMastery} 层，真气成长 +${growthGain}，当前真气成长 +${patched.qiGrowthBonus}。`
+              : `依照 ${currentManual.name} 运转周天，功法进度 ${nextStyle.practiceCount}/${threshold}。`
             : injuryDelta
               ? `行功岔气，内伤 +${injuryDelta}。`
               : "这次没能把气机转顺。"
@@ -1996,7 +2216,7 @@ export function useGameSession() {
     if (uiLocked || rolling || busy) return;
 
     const dc = 11;
-    const mod = abilityModifier(abilityValue(game.character.abilities, "wis"));
+    const mod = abilityModifier(abilityValue(game.character.abilities, "wis")) + proficiencyBonus(game.cultivationRank);
     const abilityLabel = game.character.abilities.find((entry) => entry.key === "wis")?.label || "WIS";
 
     lockUi(1800);
@@ -2008,7 +2228,7 @@ export function useGameSession() {
       resolution: {
         mode: "first",
         bonus: mod,
-        bonusLabel: `${abilityLabel} ${mod >= 0 ? "+" : ""}${mod}`
+        bonusLabel: `${abilityLabel}+修为 ${mod >= 0 ? "+" : ""}${mod}`
       },
       settleMode: "engine"
     }, (result) => {
@@ -2096,9 +2316,18 @@ export function useGameSession() {
       : effectiveRollMode === "disadvantage"
         ? "lowest"
         : "first";
-    const bonus = mod + qiBonus;
+    const cultivationBonus = check ? proficiencyBonus(game.cultivationRank) : 0;
+    const pierceBonus = combatAttack
+      && options.martialArt
+      && hasMartialTag(options.martialArt, "pierce")
+      && (game.combat.enemyAc || 0) >= 13
+      ? 1
+      : 0;
+    const bonus = mod + qiBonus + cultivationBonus + pierceBonus;
     const bonusLabel = [
       `加值 ${mod >= 0 ? "+" : ""}${mod}`,
+      ...(cultivationBonus ? [`修为 +${cultivationBonus}`] : []),
+      ...(pierceBonus ? ["穿防 +1"] : []),
       ...(!game.combat.active ? [`内力 +${qiBonus}`] : [])
     ].join(" · ");
 
@@ -2128,6 +2357,8 @@ export function useGameSession() {
         `模式：${modeText}`,
         `d20=${picked}`,
         `加值：${mod >= 0 ? "+" : ""}${mod}`,
+        ...(cultivationBonus ? [`修为：+${cultivationBonus}`] : []),
+        ...(pierceBonus ? ["穿防：+1"] : []),
         ...(!game.combat.active ? [`内力：${qiBonusSpend}（判定 +${qiBonus}）`] : []),
         check ? `总计：${total} / DC ${check.dc}` : `总计：${total}`,
         check ? `结果：${success ? "成功" : "失败"}` : "结果：仅记录本次掷骰",
@@ -2256,9 +2487,15 @@ export function useGameSession() {
     studyManual,
     practicePendingArt,
     practiceOnsiteSource,
-    cultivateQi,
+    cultivateFromManual,
     meditateRecovery,
     claimAttributeInsight,
+    devStartCombat,
+    devEndCombat,
+    devRecoverHero,
+    devGrantMartialArt,
+    devGrantInternalManual,
+    devRaiseCultivationRank,
     rollDice,
     rollDamageDice,
     submitAction,

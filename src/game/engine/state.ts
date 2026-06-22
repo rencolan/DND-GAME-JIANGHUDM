@@ -7,6 +7,7 @@ import type {
   Character,
   GamePatch,
   GameState,
+  InternalStyleEntry,
   Item,
   LocationUnlockReason,
   MartialArt,
@@ -189,7 +190,10 @@ function normalizeMartialArt(raw: Partial<MartialArt> & { name: string }): Marti
     damageDice: raw.damageDice || template?.damageDice || "1d4",
     damageBonus: raw.damageBonus ?? template?.damageBonus,
     baseQiCost: category === "internal" ? raw.baseQiCost ?? template?.baseQiCost ?? 1 : 0,
-    source: raw.source || template?.source || "江湖所得"
+    source: raw.source || template?.source || "江湖所得",
+    role: raw.role || template?.role,
+    tags: raw.tags || template?.tags || [],
+    effectText: raw.effectText || template?.effectText
   };
 }
 
@@ -256,6 +260,20 @@ function normalizeAttributeInsights(raw: AttributeInsight[] | undefined) {
   }));
 }
 
+function normalizeInternalStyles(raw: InternalStyleEntry[] | undefined): InternalStyleEntry[] {
+  return (raw || [])
+    .filter((entry) => entry?.artId && entry?.name)
+    .map((entry) => ({
+      artId: entry.artId,
+      name: entry.name,
+      sourceItemId: entry.sourceItemId,
+      masteryLevel: Math.max(0, entry.masteryLevel || 0),
+      practiceCount: Math.max(0, entry.practiceCount || 0),
+      totalQiGrowth: Math.max(0, entry.totalQiGrowth || 0),
+      riskLevel: Math.max(1, entry.riskLevel || 1)
+    }));
+}
+
 function normalizeInventory(raw: Item[] | undefined) {
   return (raw || [])
     .filter((item) => {
@@ -289,6 +307,9 @@ function normalizeInventory(raw: Item[] | undefined) {
         qiRestore: item.qiRestore,
         innerInjuryRestore: item.innerInjuryRestore ?? template?.innerInjuryRestore,
         usable: item.usable,
+        combatActionCost: item.combatActionCost ?? template?.combatActionCost,
+        grantsStatus: item.grantsStatus ?? template?.grantsStatus,
+        curesStatus: item.curesStatus ?? template?.curesStatus,
         canSell: item.canSell ?? template?.canSell,
         canSteal: item.canSteal ?? template?.canSteal,
         manualArtId: item.manualArtId ?? template?.manualArtId,
@@ -415,7 +436,7 @@ function findEnemyPreset(name: string) {
 }
 
 function inferCombatStakes(enemyName: string) {
-  return `眼下必须先稳住${enemyName}，别让对方继续压着局势走。`;
+  return `眼下必须先稳住 ${enemyName}，别让对方继续压着局势走。`;
 }
 
 function makeEnemyCombat(name = "黑衣刺客"): GameState["combat"] {
@@ -442,14 +463,18 @@ function makeEnemyCombat(name = "黑衣刺客"): GameState["combat"] {
     ],
     enemyMartialArts: preset.martialArts.map((art) => normalizeMartialArt({ ...art, name: art.name })),
     enemyInnerInjury: 0,
-    enemyStatus: []
+    enemyStatus: [],
+    playerStatus: [],
+    enemyIntent: preset.intent,
+    enemyArchetype: preset.archetype,
+    lastCombatEvent: ""
   };
 }
 
 function normalizeCombat(combat: GameState["combat"] | undefined): GameState["combat"] {
   if (!combat?.active) return { active: false, round: 0, phase: "ended", stakes: "" };
 
-  const normalized = makeEnemyCombat(combat.enemy || "姒涙垼銆傞崚鍝勵吂");
+  const normalized = makeEnemyCombat(combat.enemy || "黑衣刺客");
   return {
     ...normalized,
     ...combat,
@@ -464,6 +489,10 @@ function normalizeCombat(combat: GameState["combat"] | undefined): GameState["co
     ),
     enemyInnerInjury: combat.enemyInnerInjury ?? normalized.enemyInnerInjury ?? 0,
     enemyStatus: combat.enemyStatus || [],
+    playerStatus: combat.playerStatus || [],
+    enemyIntent: combat.enemyIntent || normalized.enemyIntent,
+    enemyArchetype: combat.enemyArchetype || normalized.enemyArchetype,
+    lastCombatEvent: combat.lastCombatEvent || normalized.lastCombatEvent,
     combatId: combat.combatId || normalized.combatId,
     round: combat.round ?? normalized.round,
     phase: combat.phase || normalized.phase,
@@ -544,9 +573,11 @@ function updateRelationshipRoute(next: GameState, update: Partial<RelationshipRo
 export function normalizeGameState(raw: GameState): GameState {
   const base = structuredClone(initialGameState);
   const current = raw || base;
-  const qiGrowthBonus = clamp(current.qiGrowthBonus ?? base.qiGrowthBonus ?? 0, 0, 6);
-  const qiBreakthroughCap = clamp(current.qiBreakthroughCap ?? base.qiBreakthroughCap ?? 2, 0, 6);
+  const qiGrowthBonus = Math.max(0, current.qiGrowthBonus ?? base.qiGrowthBonus ?? 0);
+  const qiBreakthroughCap = Math.max(0, current.qiBreakthroughCap ?? base.qiBreakthroughCap ?? 2);
   const qiTrainingProgress = clamp(current.qiTrainingProgress ?? base.qiTrainingProgress ?? 0, 0, 99);
+  const cultivationRank = Math.max(1, current.cultivationRank ?? base.cultivationRank ?? 1);
+  const internalStyles = normalizeInternalStyles(current.internalStyles || base.internalStyles);
 
   const character = relabelAbilities(current.character || base.character, qiGrowthBonus);
   const roster = (current.roster || [character]).map((member) => relabelAbilities(member, qiGrowthBonus));
@@ -635,6 +666,9 @@ export function normalizeGameState(raw: GameState): GameState {
     innerInjury: current.innerInjury || 0,
     pendingStudies,
     studySources,
+    cultivationRank,
+    internalStyles,
+    activeInternalArtId: current.activeInternalArtId || base.activeInternalArtId,
     qiGrowthBonus,
     qiBreakthroughCap,
     qiTrainingProgress,
@@ -667,11 +701,20 @@ function normalizePatchedItem(raw: Partial<Item> & { name: string }): Item {
     hpRestore: raw.hpRestore ?? template?.hpRestore,
     qiRestore: raw.qiRestore ?? template?.qiRestore,
     innerInjuryRestore: raw.innerInjuryRestore ?? template?.innerInjuryRestore,
+    combatActionCost: raw.combatActionCost ?? template?.combatActionCost,
+    grantsStatus: raw.grantsStatus ?? template?.grantsStatus,
+    curesStatus: raw.curesStatus ?? template?.curesStatus,
     canSell: raw.canSell ?? template?.canSell,
     canSteal: raw.canSteal ?? template?.canSteal,
     manualArtId: raw.manualArtId ?? template?.manualArtId,
     studySourceKind: raw.studySourceKind ?? template?.studySourceKind,
-    dangerous: raw.dangerous ?? template?.dangerous
+    dangerous: raw.dangerous ?? template?.dangerous,
+    tier: raw.tier ?? template?.tier,
+    routeKey: raw.routeKey ?? template?.routeKey,
+    accessLevel: raw.accessLevel ?? template?.accessLevel,
+    hidden: raw.hidden ?? template?.hidden,
+    requiredProgress: raw.requiredProgress ?? template?.requiredProgress,
+    fortuneGate: raw.fortuneGate ?? template?.fortuneGate
   };
 }
 
@@ -762,18 +805,33 @@ export function applyPatchToState(prev: GameState, patch: GamePatch): GameState 
   if (patch.qiChange) hero.qi = clamp(hero.qi + patch.qiChange, 0, hero.maxQi);
   if (patch.qiRecovery) hero.qi = clamp(hero.qi + patch.qiRecovery, 0, hero.maxQi);
   if (patch.qiGrowthBonusChange) {
-    next.qiGrowthBonus = clamp((next.qiGrowthBonus || 0) + patch.qiGrowthBonusChange, 0, 6);
+    next.qiGrowthBonus = Math.max(0, (next.qiGrowthBonus || 0) + patch.qiGrowthBonusChange);
   }
   if (patch.qiBreakthroughCapChange) {
-    next.qiBreakthroughCap = clamp((next.qiBreakthroughCap || 0) + patch.qiBreakthroughCapChange, 0, 6);
+    next.qiBreakthroughCap = Math.max(0, (next.qiBreakthroughCap || 0) + patch.qiBreakthroughCapChange);
   }
   if (patch.qiTrainingProgressChange) {
     next.qiTrainingProgress = Math.max(0, (next.qiTrainingProgress || 0) + patch.qiTrainingProgressChange);
   }
+  if (patch.cultivationRankChange) {
+    next.cultivationRank = Math.max(1, (next.cultivationRank || 1) + patch.cultivationRankChange);
+  }
+  if (patch.internalStyleUpdate) {
+    const normalizedStyle = normalizeInternalStyles([patch.internalStyleUpdate])[0];
+    if (normalizedStyle) {
+      const index = next.internalStyles.findIndex((entry) => entry.artId === normalizedStyle.artId);
+      if (index >= 0) next.internalStyles[index] = normalizedStyle;
+      else next.internalStyles.push(normalizedStyle);
+      next.activeInternalArtId = next.activeInternalArtId || normalizedStyle.artId;
+    }
+  }
+  if (patch.activeInternalArtId !== undefined) {
+    next.activeInternalArtId = patch.activeInternalArtId;
+  }
   if (patch.qiMaxChange) {
     hero.maxQi = clamp(hero.maxQi + patch.qiMaxChange, 0, 99);
     hero.qi = clamp(hero.qi, 0, hero.maxQi);
-    next.qiGrowthBonus = clamp((next.qiGrowthBonus || 0) + patch.qiMaxChange, 0, 6);
+    next.qiGrowthBonus = Math.max(0, (next.qiGrowthBonus || 0) + patch.qiMaxChange);
   }
   if (patch.innerInjuryChange) {
     next.innerInjury = clamp((next.innerInjury || 0) + patch.innerInjuryChange, 0, 100);
@@ -897,6 +955,16 @@ export function applyPatchToState(prev: GameState, patch: GamePatch): GameState 
     patch.combatUpdate.enemyStatusAdd?.forEach((item) => status.add(item));
     patch.combatUpdate.enemyStatusRemove?.forEach((item) => status.delete(item));
     combat.enemyStatus = [...status];
+    const playerStatus = new Set(combat.playerStatus || []);
+    patch.combatUpdate.playerStatusAdd?.forEach((item) => playerStatus.add(item));
+    patch.combatUpdate.playerStatusRemove?.forEach((item) => playerStatus.delete(item));
+    combat.playerStatus = [...playerStatus];
+    if (patch.combatUpdate.enemyIntent) {
+      combat.enemyIntent = patch.combatUpdate.enemyIntent;
+    }
+    if (patch.combatUpdate.lastCombatEvent) {
+      combat.lastCombatEvent = patch.combatUpdate.lastCombatEvent;
+    }
     if (typeof patch.combatUpdate.roundDelta === "number") {
       combat.round = Math.max(1, (combat.round || 1) + patch.combatUpdate.roundDelta);
     }

@@ -48,6 +48,35 @@ cd backend
 npm test
 ```
 
+## One-click local launcher
+
+For local development, you can use:
+
+```bash
+start-local-llm-stack.bat
+```
+
+It starts:
+
+- optional `koboldcpp` launcher if `backend/koboldcpp-launch.bat` exists
+- backend service
+- backend bridge
+- frontend Vite dev server
+
+To let it open `koboldcpp` for you, copy:
+
+```bash
+backend/koboldcpp-launch.example.bat
+```
+
+to:
+
+```bash
+backend/koboldcpp-launch.bat
+```
+
+and edit the executable path and arguments for your machine.
+
 ## Public endpoints
 
 - `GET /healthz`

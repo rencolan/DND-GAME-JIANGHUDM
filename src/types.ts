@@ -6,6 +6,9 @@ export type CreationMode = "origin";
 export type SceneType = "temple" | "market" | "tavern" | "brothel" | "inn" | "palace";
 export type ApiProvider = "openai" | "deepseek" | "custom";
 export type MartialCategory = "external" | "internal";
+export type MartialRole = "starter" | "pressure" | "finisher" | "defense" | "utility" | "recovery";
+export type MartialTag = "break" | "guard" | "injure" | "control" | "recover" | "pierce";
+export type EnemyArchetype = "brute" | "assassin" | "internalist" | "poisoner" | "defender" | "boss";
 export type StudySourceKind = "manual" | "teaching" | "onsite";
 export type StudyStage = "discovered" | "studying" | "mastered";
 export type StudyTier = "starter" | "advanced" | "mid" | "upper_prelude" | "high_chance";
@@ -20,6 +23,7 @@ export type RelationshipRouteStage = "unawakened" | "met" | "trust" | "partialit
 export type ThreatTier = "weak" | "normal" | "elite" | "master";
 export type ExposureTier = "private" | "watched" | "crowded";
 export type EconomyActionKind = "shop_list" | "buy" | "sell" | "steal";
+export type OpportunityRisk = "low" | "medium" | "high";
 export type NamelessWandererChapterStage =
   | "tutorial_story"
   | "tutorial_combat"
@@ -57,6 +61,19 @@ export interface MartialArt {
   damageBonus?: number;
   baseQiCost: number;
   source: string;
+  role?: MartialRole;
+  tags?: MartialTag[];
+  effectText?: string;
+}
+
+export interface InternalStyleEntry {
+  artId: string;
+  name: string;
+  sourceItemId?: string;
+  masteryLevel: number;
+  practiceCount: number;
+  totalQiGrowth: number;
+  riskLevel: number;
 }
 
 export interface FortuneGate {
@@ -122,6 +139,9 @@ export interface Item {
   qiRestore?: number;
   innerInjuryRestore?: number;
   usable?: boolean;
+  combatActionCost?: 0 | 1;
+  grantsStatus?: string[];
+  curesStatus?: string[];
   canSell?: boolean;
   canSteal?: boolean;
   manualArtId?: string;
@@ -133,6 +153,16 @@ export interface Item {
   hidden?: boolean;
   requiredProgress?: number;
   fortuneGate?: FortuneGate;
+}
+
+export interface LocationOpportunity {
+  id: string;
+  title: string;
+  text: string;
+  actionText: string;
+  risk: OpportunityRisk;
+  reward: string;
+  disabledReason?: string;
 }
 
 export interface Character {
@@ -264,6 +294,7 @@ export interface Message {
   id: string;
   role: MessageRole;
   text: string;
+  kind?: "story" | "combat" | "system";
 }
 
 export interface CombatState {
@@ -282,6 +313,10 @@ export interface CombatState {
   enemyMartialArts?: MartialArt[];
   enemyInnerInjury?: number;
   enemyStatus?: string[];
+  playerStatus?: string[];
+  enemyIntent?: string;
+  enemyArchetype?: EnemyArchetype;
+  lastCombatEvent?: string;
 }
 
 export interface ApiConfig {
@@ -432,6 +467,9 @@ export interface GameState {
   innerInjury?: number;
   pendingStudies: StudyEntry[];
   studySources: StudySourceState[];
+  cultivationRank: number;
+  internalStyles: InternalStyleEntry[];
+  activeInternalArtId?: string;
   qiGrowthBonus: number;
   qiBreakthroughCap: number;
   qiTrainingProgress: number;
@@ -447,6 +485,9 @@ export interface GamePatch {
   qiGrowthBonusChange?: number;
   qiBreakthroughCapChange?: number;
   qiTrainingProgressChange?: number;
+  cultivationRankChange?: number;
+  internalStyleUpdate?: InternalStyleEntry;
+  activeInternalArtId?: string;
   qiRecovery?: number;
   innerInjuryChange?: number;
   acChange?: number;
@@ -464,6 +505,10 @@ export interface GamePatch {
     enemyInnerInjuryChange?: number;
     enemyStatusAdd?: string[];
     enemyStatusRemove?: string[];
+    playerStatusAdd?: string[];
+    playerStatusRemove?: string[];
+    enemyIntent?: string;
+    lastCombatEvent?: string;
     enemyMartialArtUsed?: string;
     enemyQiCost?: number;
     phase?: CombatPhase;

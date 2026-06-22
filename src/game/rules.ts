@@ -36,6 +36,50 @@ export function calculateMartialDamageBonus(abilities: Ability[] | undefined, ar
   return baseBonus + abilityBonus;
 }
 
+export function proficiencyBonus(cultivationRank = 1) {
+  if (cultivationRank >= 9) return 6;
+  if (cultivationRank >= 7) return 5;
+  if (cultivationRank >= 5) return 4;
+  if (cultivationRank >= 3) return 3;
+  return 2;
+}
+
+export function hasMartialTag(art: MartialArt | undefined, tag: NonNullable<MartialArt["tags"]>[number]) {
+  return Boolean(art?.tags?.includes(tag));
+}
+
+export function martialTagLabels(art: MartialArt | undefined) {
+  const labels: Record<string, string> = {
+    break: "破防",
+    guard: "守势",
+    injure: "内伤",
+    control: "控场",
+    recover: "回气",
+    pierce: "穿防"
+  };
+  return (art?.tags || []).map((tag) => labels[tag] || tag);
+}
+
+export function internalStylePracticeThreshold(masteryLevel = 0) {
+  return 2 + Math.max(0, masteryLevel);
+}
+
+export function internalStyleRiskLevel(art: MartialArt | undefined) {
+  if (!art) return 1;
+  if (art.source.includes("星宿") || art.name.includes("毒") || art.name.includes("化功")) return 3;
+  if (art.grade === "绝学" || art.grade === "高阶" || art.grade === "宗师") return 3;
+  if (art.grade === "家传" || art.grade === "上乘前置") return 2;
+  return 1;
+}
+
+export function qiGrowthForInternalMastery(art: MartialArt | undefined, masteryLevel: number) {
+  if (!art) return 1;
+  const base = art.grade === "绝学" || art.grade === "高阶" || art.grade === "宗师"
+    ? 2
+    : 1;
+  return masteryLevel > 0 && masteryLevel % 3 === 0 ? base + 1 : base;
+}
+
 export type InnerInjuryTriggerKind =
   | "external_crit"
   | "internal_hit"

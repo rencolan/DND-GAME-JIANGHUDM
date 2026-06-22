@@ -1,10 +1,12 @@
 import { Download, Sparkles, Upload, Volume2, VolumeX } from "lucide-react";
-import type { ChangeEvent, MutableRefObject } from "react";
-import type { ApiConfig } from "../../types";
+import { useState, type ChangeEvent, type MutableRefObject } from "react";
+import { enemyPresets, martialArtCatalog, studySourceRegistry } from "../../data";
+import type { ApiConfig, GameState, StudyRouteKey, StudyTier } from "../../types";
 import { DS_FLASH_MODEL, DS_PRO_MODEL, PROVIDER_DEFAULTS, PROVIDER_OPTIONS } from "../sessionShared";
 import type { ApiTestState } from "../sessionTypes";
 
 type SystemTabProps = {
+  game: GameState;
   api: ApiConfig;
   setApi: (updater: (prev: ApiConfig) => ApiConfig) => void;
   applyDeepSeekPreset: (model: string) => void;
@@ -22,9 +24,31 @@ type SystemTabProps = {
   sfxEnabled: boolean;
   sfxVolume: number;
   setSfxVolume: (value: number) => void;
+  devStartCombat: (enemyName: string) => void;
+  devEndCombat: () => void;
+  devRecoverHero: () => void;
+  devGrantMartialArt: (artId: string) => void;
+  devGrantInternalManual: (artId: string) => void;
+  devRaiseCultivationRank: () => void;
+};
+
+const routeLabels: Record<StudyRouteKey, string> = {
+  str: "力道线",
+  dex: "身法线",
+  int: "悟性线",
+  wis: "心境线"
+};
+
+const tierLabels: Record<StudyTier, string> = {
+  starter: "起手",
+  advanced: "进阶",
+  mid: "中段",
+  upper_prelude: "上乘前置",
+  high_chance: "高阶机缘"
 };
 
 export function SystemTab({
+  game,
   api,
   setApi,
   applyDeepSeekPreset,
@@ -41,8 +65,78 @@ export function SystemTab({
   toggleSfx,
   sfxEnabled,
   sfxVolume,
-  setSfxVolume
+  setSfxVolume,
+  devStartCombat,
+  devEndCombat,
+  devRecoverHero,
+  devGrantMartialArt,
+  devGrantInternalManual,
+  devRaiseCultivationRank
 }: SystemTabProps) {
+  const internalArts = martialArtCatalog.filter((art) => art.category === "internal");
+  const [selectedEnemyName, setSelectedEnemyName] = useState(enemyPresets[0]?.name || "");
+  const [selectedArtId, setSelectedArtId] = useState(martialArtCatalog[0]?.id || "");
+  const [selectedInternalArtId, setSelectedInternalArtId] = useState(internalArts[0]?.id || "");
+
+  const registryRows = studySourceRegistry.map((route) => {
+    const learned = route.artId ? game.character.martialArts.some((art) => art.id === route.artId) : false;
+    const pending = route.artId ? game.pendingStudies.some((entry) => entry.artId === route.artId) : false;
+    const onsite = route.artId ? game.studySources.some((entry) => entry.artId === route.artId) : false;
+    const discovered = game.storyFlags.includes(`study-source:${route.id}:discovered`) || game.storyFlags.includes(`study-hint:${route.id}`);
+
+    let status = "未触发";
+    if (learned) status = "已掌握";
+    else if (pending) status = "待掌握";
+    else if (onsite) status = "现场来源";
+    else if (discovered) status = route.accessLevel === "hint" ? "仅线索" : "已发现";
+
+    return {
+      ...route,
+      status
+    };
+  });
+
+  const byLocation = Object.entries(
+    registryRows.reduce<Record<string, { total: number; discovered: number; learned: number }>>((acc, route) => {
+      const current = acc[route.locationId] || { total: 0, discovered: 0, learned: 0 };
+      current.total += 1;
+      if (route.status !== "未触发") current.discovered += 1;
+      if (route.status === "已掌握") current.learned += 1;
+      acc[route.locationId] = current;
+      return acc;
+    }, {})
+  );
+
+  const byRoute = Object.entries(
+    registryRows.reduce<Record<StudyRouteKey, Record<StudyTier, number>>>((acc, route) => {
+      const routeBucket = acc[route.routeKey] || {
+        starter: 0,
+        advanced: 0,
+        mid: 0,
+        upper_prelude: 0,
+        high_chance: 0
+      };
+      routeBucket[route.tier] += 1;
+      acc[route.routeKey] = routeBucket;
+      return acc;
+    }, {} as Record<StudyRouteKey, Record<StudyTier, number>>)
+  ) as Array<[StudyRouteKey, Record<StudyTier, number>]>;
+  const taggedArts = martialArtCatalog.filter((art) => art.tags?.length);
+  const enemyArchetypes = new Set(enemyPresets.map((enemy) => enemy.archetype));
+  const sourcedArtIds = new Set(studySourceRegistry.map((route) => route.artId).filter(Boolean));
+  const unsourcedArts = martialArtCatalog.filter((art) => !sourcedArtIds.has(art.id));
+  const highGateIssues = studySourceRegistry.filter((route) =>
+    (route.tier === "upper_prelude" || route.tier === "high_chance")
+    && (!route.chapterGate || (!(route.prerequisiteArts?.length) && !(route.prerequisiteFlags?.length)))
+  );
+  const keywordIssues = studySourceRegistry.filter((route) => route.keywords.length === 0);
+  const artSourceCounts = studySourceRegistry.reduce<Record<string, number>>((acc, route) => {
+    if (!route.artId) return acc;
+    acc[route.artId] = (acc[route.artId] || 0) + 1;
+    return acc;
+  }, {});
+  const duplicateArtSources = Object.entries(artSourceCounts).filter(([, count]) => count > 1);
+
   return (
     <section className="system-panel">
       <article className="system-section">
@@ -180,6 +274,177 @@ export function SystemTab({
               onChange={(event) => setSfxVolume(Number(event.target.value))}
             />
           </label>
+        </section>
+      </article>
+
+      <article className="system-section">
+        <header>
+          <b>开发面板</b>
+          <span>只用于内容维护，帮助查看修行来源覆盖、发现状态和路线分层。</span>
+        </header>
+
+        <section className="dev-subsection dev-test-panel">
+          <b>战斗/成长测试</b>
+          <div className="dev-test-grid">
+            <label>
+              敌人
+              <select value={selectedEnemyName} onChange={(event) => setSelectedEnemyName(event.target.value)}>
+                {enemyPresets.map((enemy) => (
+                  <option key={enemy.name} value={enemy.name}>
+                    {enemy.name} · {enemy.archetype}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button type="button" onClick={() => selectedEnemyName && devStartCombat(selectedEnemyName)}>
+              生成敌人
+            </button>
+            <button type="button" onClick={devEndCombat} disabled={!game.combat.active}>
+              结束战斗
+            </button>
+
+            <label>
+              武学
+              <select value={selectedArtId} onChange={(event) => setSelectedArtId(event.target.value)}>
+                {martialArtCatalog.map((art) => (
+                  <option key={art.id} value={art.id}>
+                    {art.name} · {art.linkedAbility}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button type="button" onClick={() => selectedArtId && devGrantMartialArt(selectedArtId)}>
+              授予武学
+            </button>
+            <button type="button" onClick={devRecoverHero}>
+              恢复角色
+            </button>
+
+            <label>
+              内功秘籍
+              <select value={selectedInternalArtId} onChange={(event) => setSelectedInternalArtId(event.target.value)}>
+                {internalArts.map((art) => (
+                  <option key={art.id} value={art.id}>
+                    {art.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button type="button" onClick={() => selectedInternalArtId && devGrantInternalManual(selectedInternalArtId)}>
+              授予秘籍
+            </button>
+            <button type="button" onClick={devRaiseCultivationRank}>
+              修为 +1
+            </button>
+          </div>
+        </section>
+
+        <div className="dev-metrics-grid">
+          <article className="dev-metric-card">
+            <b>{studySourceRegistry.length}</b>
+            <small>总修行来源</small>
+          </article>
+          <article className="dev-metric-card">
+            <b>{registryRows.filter((row) => row.status !== "未触发").length}</b>
+            <small>已触达来源</small>
+          </article>
+          <article className="dev-metric-card">
+            <b>{registryRows.filter((row) => row.status === "已掌握").length}</b>
+            <small>已掌握武学</small>
+          </article>
+          <article className="dev-metric-card">
+            <b>{game.pendingStudies.length}</b>
+            <small>待掌握招式</small>
+          </article>
+          <article className="dev-metric-card">
+            <b>{game.cultivationRank}</b>
+            <small>修为 Rank</small>
+          </article>
+          <article className="dev-metric-card">
+            <b>{game.internalStyles.length}</b>
+            <small>已参照功法</small>
+          </article>
+          <article className="dev-metric-card">
+            <b>{taggedArts.length}/{martialArtCatalog.length}</b>
+            <small>武学效果覆盖</small>
+          </article>
+          <article className="dev-metric-card">
+            <b>{enemyArchetypes.size}</b>
+            <small>敌人类型</small>
+          </article>
+        </div>
+
+        <div className="dev-grid-two">
+          <section className="dev-subsection">
+            <b>按地点统计</b>
+            <div className="dev-simple-list">
+              {byLocation.map(([locationId, stats]) => (
+                <article key={locationId}>
+                  <strong>{locationId}</strong>
+                  <span>{stats.discovered}/{stats.total} 已触达 · {stats.learned} 已掌握</span>
+                </article>
+              ))}
+            </div>
+          </section>
+
+          <section className="dev-subsection">
+            <b>按路线分层</b>
+            <div className="dev-simple-list">
+              {byRoute.map(([routeKey, tiers]) => (
+                <article key={routeKey}>
+                  <strong>{routeLabels[routeKey]}</strong>
+                  <span>
+                    {Object.entries(tiers)
+                      .filter(([, count]) => count > 0)
+                      .map(([tier, count]) => `${tierLabels[tier as StudyTier]} ${count}`)
+                      .join(" · ")}
+                  </span>
+                </article>
+              ))}
+            </div>
+          </section>
+        </div>
+
+        <section className="dev-subsection">
+          <b>覆盖检查</b>
+          <div className="dev-check-grid">
+            <article className={unsourcedArts.length ? "warn" : "ok"}>
+              <strong>{unsourcedArts.length}</strong>
+              <span>无来源武学</span>
+              <small>{unsourcedArts.slice(0, 4).map((art) => art.name).join("、") || "已覆盖"}</small>
+            </article>
+            <article className={highGateIssues.length ? "warn" : "ok"}>
+              <strong>{highGateIssues.length}</strong>
+              <span>高阶门槛问题</span>
+              <small>{highGateIssues.slice(0, 4).map((route) => route.name).join("、") || "已设置章节/前置"}</small>
+            </article>
+            <article className={keywordIssues.length ? "warn" : "ok"}>
+              <strong>{keywordIssues.length}</strong>
+              <span>缺关键词来源</span>
+              <small>{keywordIssues.slice(0, 4).map((route) => route.name).join("、") || "已覆盖"}</small>
+            </article>
+            <article className={duplicateArtSources.length ? "warn" : "ok"}>
+              <strong>{duplicateArtSources.length}</strong>
+              <span>重复来源武学</span>
+              <small>{duplicateArtSources.slice(0, 4).map(([artId]) => artId).join("、") || "无重复"}</small>
+            </article>
+          </div>
+        </section>
+
+        <section className="dev-subsection">
+          <b>来源明细</b>
+          <div className="dev-route-table">
+            {registryRows.map((row) => (
+              <article key={row.id}>
+                <div>
+                  <strong>{row.name}</strong>
+                  <small>{row.locationId} · {routeLabels[row.routeKey]} · {tierLabels[row.tier]}</small>
+                </div>
+                <span>{row.accessLevel}</span>
+                <span>{row.status}</span>
+              </article>
+            ))}
+          </div>
         </section>
       </article>
     </section>

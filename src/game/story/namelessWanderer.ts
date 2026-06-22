@@ -9,6 +9,7 @@ import type {
   Quest,
   QuestStateNode
 } from "../../types";
+import { buildStudyRouteReward } from "./martialArtRoutes";
 
 export const NAMELESS_WANDERER_CHAPTER_ID = "nameless-wanderer-ch1";
 export const NAMELESS_WANDERER_TUTORIAL_ENEMY = "拦路泼皮";
@@ -290,6 +291,28 @@ function setChapterStage(stage: NamelessWandererChapterStage): Partial<ChapterSt
   };
 }
 
+function mergeRewardPatch(base: GamePatch, reward: GamePatch | undefined): GamePatch {
+  if (!reward) return base;
+
+  return {
+    ...base,
+    hpChange: (base.hpChange || 0) + (reward.hpChange || 0) || undefined,
+    qiChange: (base.qiChange || 0) + (reward.qiChange || 0) || undefined,
+    qiRecovery: (base.qiRecovery || 0) + (reward.qiRecovery || 0) || undefined,
+    cultivationRankChange: (base.cultivationRankChange || 0) + (reward.cultivationRankChange || 0) || undefined,
+    itemChanges: [...(base.itemChanges || []), ...(reward.itemChanges || [])],
+    studyAdd: [...(base.studyAdd || []), ...(reward.studyAdd || [])],
+    studySourceAdd: [...(base.studySourceAdd || []), ...(reward.studySourceAdd || [])],
+    storyFlagsAdd: [...(base.storyFlagsAdd || []), ...(reward.storyFlagsAdd || [])],
+    rumorAdd: [...(base.rumorAdd || []), ...(reward.rumorAdd || [])],
+    systemNote: [base.systemNote, reward.systemNote].filter(Boolean).join(" ")
+  };
+}
+
+function withStudyRewards(state: GameState, base: GamePatch, routeIds: string[], options: { force?: boolean } = {}) {
+  return routeIds.reduce((patch, routeId) => mergeRewardPatch(patch, buildStudyRouteReward(state, routeId, options)), base);
+}
+
 function buildCheck(label: string, dc: number, abilityKey: PendingCheck["abilityKey"], reason: string, risk: string, suggestedAction: string): GamePatch {
   return {
     pendingCheck: {
@@ -342,7 +365,7 @@ function resolveQuestResolved(state: GameState, questId: string): GamePatch | un
     const resolvedState = buildQuestStateUpdate(QUEST_WANDERER_1, "resolved", "first_assignment");
     const nextState = buildQuestStateUpdate(QUEST_WANDERER_2, "active");
 
-    return {
+    const patch: GamePatch = {
       questUpdates: [resolved, nextQuest].filter(Boolean) as Partial<Quest>[],
       questStateUpdates: [resolvedState, nextState].filter(Boolean) as QuestStateNode[],
       objectiveUpdate: buildObjective(QUEST_WANDERER_2),
@@ -367,6 +390,8 @@ function resolveQuestResolved(state: GameState, questId: string): GamePatch | un
       chapterStateUpdate: setChapterStage("track_shadow"),
       systemNote: "客栈这边暂时稳住了。下一步该顺着风声去无量山，看看那场骚动和你刚落脚的地方到底有没有直接关系。"
     };
+
+    return withStudyRewards(state, patch, ["dali-heart-manual", "renxue-shou-inn", "jianghu-daolu-inn"], { force: true });
   }
 
   if (questId === QUEST_WANDERER_2) {
@@ -375,7 +400,7 @@ function resolveQuestResolved(state: GameState, questId: string): GamePatch | un
     const resolvedState = buildQuestStateUpdate(QUEST_WANDERER_2, "resolved", "track_shadow");
     const nextState = buildQuestStateUpdate(QUEST_WANDERER_3, "active");
 
-    return {
+    const patch: GamePatch = {
       questUpdates: [resolved, nextQuest].filter(Boolean) as Partial<Quest>[],
       questStateUpdates: [resolvedState, nextState].filter(Boolean) as QuestStateNode[],
       objectiveUpdate: buildObjective(QUEST_WANDERER_3),
@@ -418,6 +443,8 @@ function resolveQuestResolved(state: GameState, questId: string): GamePatch | un
       chapterStateUpdate: setChapterStage("black_assassin_fight"),
       systemNote: "无量山的探查已经变成正面冲突。你正式卷进了段誉和木婉清那边的乱局，接下来只能先把追兵压住。"
     };
+
+    return withStudyRewards(state, patch, ["duanjia-jianfa", "wuliang-jianfa"], { force: true });
   }
 
   return undefined;
@@ -436,7 +463,7 @@ function resolveCombatWin(state: GameState, enemyName?: string): GamePatch | und
   const resolvedState = buildQuestStateUpdate(QUEST_WANDERER_3, "resolved", "black_assassin_fight");
   const nextState = buildQuestStateUpdate(QUEST_WANDERER_4, "active");
 
-  return {
+  const patch: GamePatch = {
     questUpdates: [resolved, nextQuest].filter(Boolean) as Partial<Quest>[],
     questStateUpdates: [resolvedState, nextState].filter(Boolean) as QuestStateNode[],
     objectiveUpdate: buildObjective(QUEST_WANDERER_4),
@@ -499,9 +526,12 @@ function resolveCombatWin(state: GameState, enemyName?: string): GamePatch | und
       triggerFlag("onCombatWin", QUEST_WANDERER_3),
       stageFlag("tea_house_followup")
     ],
+    cultivationRankChange: 1,
     chapterStateUpdate: setChapterStage("tea_house_followup"),
-    systemNote: "无量山这场先压住了。你也拿到了黑衣刺客身上的残破账页，下一步该尽快回大理，把线索和人证对起来。"
+    systemNote: "无量山这场先压住了。你也拿到了黑衣刺客身上的残破账页，修为也因这一场硬仗更稳了一层。下一步该尽快回大理，把线索和人证对起来。"
   };
+
+  return withStudyRewards(state, patch, ["zhuifeng-jianlu", "beiming-prelude"], { force: true });
 }
 
 function resolveUseClue(state: GameState, clueId: string): GamePatch | undefined {
@@ -595,7 +625,7 @@ function resolveStoryCheckPassed(state: GameState, checkId: StoryCheckId): GameP
     hasQuestStatus(state, QUEST_WANDERER_4, "active") &&
     hasRouteStage(state, "trust")
   ) {
-    return {
+    const patch: GamePatch = {
       questUpdates: [
         { id: QUEST_WANDERER_4, status: "resolved" },
         { id: QUEST_WANDERER_5, title: "双儿去留", text: mainQuestBlueprints[QUEST_WANDERER_5].questText, status: "active" }
@@ -641,9 +671,12 @@ function resolveStoryCheckPassed(state: GameState, checkId: StoryCheckId): GameP
         { id: QUEST_WANDERER_4, status: "resolved", stage: "owner-saved" },
         { id: QUEST_WANDERER_5, status: "active", stage: "shuang-er-offered" }
       ],
+      cultivationRankChange: 1,
       chapterStateUpdate: setChapterStage("tea_house_followup"),
-      systemNote: "掌柜承了你的命，也把双儿郑重托付到了你面前。大理这边的第一章收口，现在落到了你的选择上。"
+      systemNote: "掌柜承了你的命，也把双儿郑重托付到了你面前。你在这一场混乱里又稳住一层修为，大理这边的第一章收口，现在落到了你的选择上。"
     };
+
+    return withStudyRewards(state, patch, ["wuluo-qingyan-zhang"], { force: true });
   }
 
   return undefined;

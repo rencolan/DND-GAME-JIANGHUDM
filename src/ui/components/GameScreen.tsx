@@ -1,7 +1,7 @@
 import { Dices, Send, User } from "lucide-react";
 import { type CSSProperties, type FormEvent, useEffect, useMemo, useState } from "react";
 import { doubleDamageDice } from "../../game/combat";
-import { currentLocationName, isVisibleNpc, primaryRouteForNpc } from "../../game/world";
+import { buildLocationOpportunities, currentLocationName, isVisibleNpc, primaryRouteForNpc } from "../../game/world";
 import type { DrawerTab, Message, PendingCheck } from "../../types";
 import { sceneAssets } from "../display";
 import type { GameSession } from "../useGameSession";
@@ -16,11 +16,12 @@ import { EnemyCard } from "./EnemyCard";
 import { InventoryTab } from "./InventoryTab";
 import { MapTab } from "./MapTab";
 import { ObjectiveCard } from "./ObjectiveCard";
+import { OpportunityBoard } from "./OpportunityBoard";
 import { PendingCheckCard } from "./PendingCheckCard";
 import { SystemTab } from "./SystemTab";
 
 const BGM_SRC = "../assets/bgm/Seven_Peaks_at_Twilight.mp3";
-const COMBAT_SUMMARY_RE = /^【(先攻结果|攻击结果|伤害结果|敌方结果)】/;
+const COMBAT_SUMMARY_RE = /^【(先攻|先攻结果|命中|攻击结果|伤害|伤害结果|敌方回合|敌方结果|脱身|逃跑结果|内伤|状态)】/;
 
 type GameScreenProps = {
   session: GameSession;
@@ -114,9 +115,14 @@ export function GameScreen({ session }: GameScreenProps) {
     studyManual,
     practicePendingArt,
     practiceOnsiteSource,
-    cultivateQi,
-    meditateRecovery,
+    cultivateFromManual,
     claimAttributeInsight,
+    devStartCombat,
+    devEndCombat,
+    devRecoverHero,
+    devGrantMartialArt,
+    devGrantInternalManual,
+    devRaiseCultivationRank,
     rollDice,
     rollDamageDice
   } = session;
@@ -126,6 +132,7 @@ export function GameScreen({ session }: GameScreenProps) {
   const visibleNpcs = useMemo(() => game.npcs.filter(isVisibleNpc), [game.npcs]);
   const companions = useMemo(() => visibleNpcs.filter((npc) => npc.companion), [visibleNpcs]);
   const activeRelationshipNpcs = useMemo(() => visibleNpcs.filter((npc) => primaryRouteForNpc(game, npc.id)), [game, visibleNpcs]);
+  const opportunities = useMemo(() => buildLocationOpportunities(game), [game]);
   const selectedLocation = game.locations.find((location) => location.id === selectedLocationId)
     || game.locations.find((location) => location.current)
     || game.locations[0];
@@ -237,10 +244,9 @@ export function GameScreen({ session }: GameScreenProps) {
         setSelectedAbilityInfoKey={setSelectedAbilityInfoKey}
         activeRelationshipNpcs={activeRelationshipNpcs}
         studyManual={studyManual}
+        cultivateFromManual={cultivateFromManual}
         practicePendingArt={practicePendingArt}
         practiceOnsiteSource={practiceOnsiteSource}
-        cultivateQi={cultivateQi}
-        meditateRecovery={meditateRecovery}
         claimAttributeInsight={claimAttributeInsight}
       />
     );
@@ -255,11 +261,16 @@ export function GameScreen({ session }: GameScreenProps) {
     );
   } else if (activeTab === "party") {
     drawerContent = (
-      <CompanionsTab
-        game={game}
-        companions={companions}
-        activeRelationshipNpcs={activeRelationshipNpcs}
-      />
+        <CompanionsTab
+          game={game}
+          companions={companions}
+          activeRelationshipNpcs={activeRelationshipNpcs}
+          onUseSupport={(npcId) => {
+            if (npcId === "shuang-er") {
+              void submitAction("我请双儿传话留意，替我备药并看住客栈动静");
+            }
+          }}
+        />
     );
   } else if (activeTab === "map") {
     drawerContent = (
@@ -276,6 +287,7 @@ export function GameScreen({ session }: GameScreenProps) {
   } else {
     drawerContent = (
       <SystemTab
+        game={game}
         api={api}
         setApi={setApi}
         applyDeepSeekPreset={applyDeepSeekPreset}
@@ -293,6 +305,12 @@ export function GameScreen({ session }: GameScreenProps) {
         sfxEnabled={sfxEnabled}
         sfxVolume={sfxVolume}
         setSfxVolume={setSfxVolume}
+        devStartCombat={devStartCombat}
+        devEndCombat={devEndCombat}
+        devRecoverHero={devRecoverHero}
+        devGrantMartialArt={devGrantMartialArt}
+        devGrantInternalManual={devGrantInternalManual}
+        devRaiseCultivationRank={devRaiseCultivationRank}
       />
     );
   }
@@ -322,7 +340,17 @@ export function GameScreen({ session }: GameScreenProps) {
           onBeginTutorialCombat={beginTutorialCombat}
           onSkipTutorial={skipTutorial}
         />
-        {!game.combat.active && <EnemyCard combat={game.combat} />}
+        {!game.combat.active && (
+          <OpportunityBoard
+            opportunities={opportunities}
+            controlsBlocked={controlsBlocked}
+            busy={busy}
+            onChoose={(actionText) => {
+              void submitAction(actionText);
+            }}
+          />
+        )}
+        {game.combat.active && <EnemyCard combat={game.combat} />}
         {!game.combat.active && (
           <PendingCheckCard
             currentCheck={currentCheck}

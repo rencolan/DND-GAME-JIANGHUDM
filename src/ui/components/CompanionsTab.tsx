@@ -7,6 +7,7 @@ type CompanionsTabProps = {
   game: GameState;
   companions: GameState["npcs"];
   activeRelationshipNpcs: GameState["npcs"];
+  onUseSupport: (npcId: string) => void;
 };
 
 function relationshipTier(relationship: number) {
@@ -17,7 +18,12 @@ function relationshipTier(relationship: number) {
   return "stranger";
 }
 
-export function CompanionsTab({ game, companions, activeRelationshipNpcs }: CompanionsTabProps) {
+function canUseSupport(game: GameState, npcId: string) {
+  const route = primaryRouteForNpc(game, npcId);
+  return npcId === "shuang-er" && Boolean(route?.active && route.supportUnlocked?.length);
+}
+
+export function CompanionsTab({ game, companions, activeRelationshipNpcs, onUseSupport }: CompanionsTabProps) {
   return (
     <div className="npc-grid">
       {companions.length > 0 ? companions.map((npc) => {
@@ -30,6 +36,7 @@ export function CompanionsTab({ game, companions, activeRelationshipNpcs }: Comp
             routeLabel={route ? relationshipRouteStageLabel(route.stage, route.kind) : undefined}
             routeNote={route?.note}
             supportLabels={route?.supportUnlocked?.map(supportLabel)}
+            onUseSupport={canUseSupport(game, npc.id) ? () => onUseSupport(npc.id) : undefined}
           />
         );
       }) : (
@@ -50,6 +57,7 @@ export function CompanionsTab({ game, companions, activeRelationshipNpcs }: Comp
                 routeLabel={relationshipRouteStageLabel(route.stage, route.kind)}
                 routeNote={route.note}
                 supportLabels={route.supportUnlocked?.map(supportLabel)}
+                onUseSupport={canUseSupport(game, npc.id) ? () => onUseSupport(npc.id) : undefined}
               />
             );
           })}

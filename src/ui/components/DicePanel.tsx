@@ -1,4 +1,4 @@
-import { abilityModifier } from "../../game/rules";
+import { abilityModifier, martialTagLabels } from "../../game/rules";
 import type { GameState, PendingCheck, PendingDamage } from "../../types";
 
 type DicePanelProps = {
@@ -57,6 +57,7 @@ export function DicePanel({
   if (!diceOpen) return null;
 
   const combatEscape = game.combat.active && currentCheck?.kind === "combat_escape";
+  const sealedQiSurcharge = game.combat.active && game.combat.playerStatus?.includes("sealed") ? 1 : 0;
   const recommendedAbilityKey = combatInitiative ? "dex" : currentCheck?.abilityKey;
   const recommendedAbility = game.character.abilities.find((ability) => ability.key === recommendedAbilityKey);
   const recommendedMod = recommendedAbility ? abilityModifier(recommendedAbility.value) : 0;
@@ -186,8 +187,9 @@ export function DicePanel({
               game.character.martialArts.map((art) => {
                 const ability = game.character.abilities.find((entry) => entry.key === art.linkedAbility);
                 const mod = ability ? abilityModifier(ability.value) : 0;
-                const costOnHit = art.category === "internal" ? art.baseQiCost : 0;
+                const costOnHit = art.category === "internal" ? art.baseQiCost + sealedQiSurcharge : 0;
                 const canUse = art.category === "external" || game.character.qi >= costOnHit;
+                const tags = martialTagLabels(art);
 
                 return (
                   <button
@@ -198,7 +200,8 @@ export function DicePanel({
                   >
                     <span>
                       <strong>{art.name}</strong>
-                      <small>{ability?.label || "对应属性"} · 伤害 {art.damageDice}{art.damageBonus ? ` +${art.damageBonus}` : ""}</small>
+                      <small>{ability?.label || "对应属性"} · 伤害 {art.damageDice}{art.damageBonus ? ` +${art.damageBonus}` : ""}{tags.length ? ` · ${tags.join(" / ")}` : ""}</small>
+                      {art.effectText && <small>{art.effectText}</small>}
                     </span>
                     <b>{mod >= 0 ? "+" : ""}{mod}{costOnHit ? ` · 耗气 ${costOnHit}` : ""}</b>
                   </button>
@@ -227,8 +230,9 @@ export function DicePanel({
                 {game.character.martialArts.map((art) => {
                   const ability = game.character.abilities.find((entry) => entry.key === art.linkedAbility);
                   const mod = ability ? abilityModifier(ability.value) : 0;
-                  const costOnHit = art.category === "internal" ? art.baseQiCost : 0;
+                const costOnHit = art.category === "internal" ? art.baseQiCost + sealedQiSurcharge : 0;
                   const canUse = qiInvest <= game.character.qi && (art.category === "external" || game.character.qi >= qiInvest + costOnHit);
+                  const tags = martialTagLabels(art);
 
                   return (
                     <button
@@ -243,7 +247,8 @@ export function DicePanel({
                     >
                       <span>
                         <strong>{art.name}</strong>
-                        <small>{art.category === "internal" ? "内功" : "外功"} · 伤害 {art.damageDice}{art.damageBonus ? ` +${art.damageBonus}` : ""}</small>
+                        <small>{art.category === "internal" ? "内功" : "外功"} · 伤害 {art.damageDice}{art.damageBonus ? ` +${art.damageBonus}` : ""}{tags.length ? ` · ${tags.join(" / ")}` : ""}</small>
+                        {art.effectText && <small>{art.effectText}</small>}
                       </span>
                       <b>{mod >= 0 ? "+" : ""}{mod}{costOnHit ? ` · 耗气 ${costOnHit}` : ""}</b>
                     </button>

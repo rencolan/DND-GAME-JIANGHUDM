@@ -7,6 +7,20 @@ type InventoryTabProps = {
   useItem: (item: Item) => void;
 };
 
+const statusLabels: Record<string, string> = {
+  screened: "掩护",
+  guarded: "守势",
+  poisoned: "中毒",
+  cold: "寒毒",
+  sealed: "封脉",
+  controlled: "受扰",
+  exposed: "破绽"
+};
+
+function readableStatuses(statuses?: string[]) {
+  return (statuses || []).map((status) => statusLabels[status] || status).join("、");
+}
+
 export function InventoryTab({
   game,
   selectedInventoryMartialId,
@@ -17,6 +31,14 @@ export function InventoryTab({
 
   return (
     <div className="drawer-grid">
+      <section className="inventory-summary-card">
+        <div>
+          <b>行囊银两</b>
+          <p>随身盘缠与可立即调用的现银。</p>
+        </div>
+        <span>{game.character.silver} 两</span>
+      </section>
+
       <section className="list">
         {game.character.inventory.length > 0 ? (
           game.character.inventory.map((item) => (
@@ -24,6 +46,13 @@ export function InventoryTab({
               <div>
                 <b>{item.name}</b>
                 <p>{item.desc}</p>
+                {(item.combatActionCost || item.grantsStatus?.length || item.curesStatus?.length) && (
+                  <p>
+                    {item.combatActionCost ? "战斗中消耗一手" : "战斗中不耗手"}
+                    {item.grantsStatus?.length ? ` · 获得 ${readableStatuses(item.grantsStatus)}` : ""}
+                    {item.curesStatus?.length ? ` · 解除 ${readableStatuses(item.curesStatus)}` : ""}
+                  </p>
+                )}
               </div>
               <span>x{item.count}</span>
               {item.usable && (

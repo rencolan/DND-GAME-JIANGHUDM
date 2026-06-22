@@ -6,6 +6,7 @@ type NpcCardProps = {
   routeLabel?: string;
   routeNote?: string;
   supportLabels?: string[];
+  onUseSupport?: () => void;
 };
 
 export function NpcCard({
@@ -13,7 +14,8 @@ export function NpcCard({
   relationshipLabel,
   routeLabel,
   routeNote,
-  supportLabels
+  supportLabels,
+  onUseSupport
 }: NpcCardProps) {
   return (
     <article className="npc-card">
@@ -29,6 +31,11 @@ export function NpcCard({
           {relationshipLabel && <em>{relationshipLabel}</em>}
           {supportLabels?.length ? <em>{supportLabels.join(" · ")}</em> : null}
         </div>
+        {onUseSupport && (
+          <button type="button" className="npc-support-action" onClick={onUseSupport}>
+            请求支援
+          </button>
+        )}
       </div>
     </article>
   );

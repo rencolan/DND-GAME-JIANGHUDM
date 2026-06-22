@@ -27,6 +27,11 @@ export function mergeGamePatches(...patches: Array<GamePatch | undefined>): Game
     if (patch.qiTrainingProgressChange !== undefined) {
       merged.qiTrainingProgressChange = (merged.qiTrainingProgressChange || 0) + patch.qiTrainingProgressChange;
     }
+    if (patch.cultivationRankChange !== undefined) {
+      merged.cultivationRankChange = (merged.cultivationRankChange || 0) + patch.cultivationRankChange;
+    }
+    if (patch.internalStyleUpdate !== undefined) merged.internalStyleUpdate = patch.internalStyleUpdate;
+    if (patch.activeInternalArtId !== undefined) merged.activeInternalArtId = patch.activeInternalArtId;
     if (patch.qiRecovery !== undefined) merged.qiRecovery = (merged.qiRecovery || 0) + patch.qiRecovery;
     if (patch.innerInjuryChange !== undefined) merged.innerInjuryChange = (merged.innerInjuryChange || 0) + patch.innerInjuryChange;
     if (patch.acChange !== undefined) merged.acChange = (merged.acChange || 0) + patch.acChange;
@@ -38,9 +43,32 @@ export function mergeGamePatches(...patches: Array<GamePatch | undefined>): Game
     if (patch.combatAction !== undefined) merged.combatAction = patch.combatAction;
     if (patch.enemyName !== undefined) merged.enemyName = patch.enemyName;
     if (patch.combatUpdate) {
-      merged.combatUpdate = { ...(merged.combatUpdate || {}), ...patch.combatUpdate };
+      const previous = merged.combatUpdate || {};
+      merged.combatUpdate = {
+        ...previous,
+        ...patch.combatUpdate,
+        enemyStatusAdd: [...(previous.enemyStatusAdd || []), ...(patch.combatUpdate.enemyStatusAdd || [])],
+        enemyStatusRemove: [...(previous.enemyStatusRemove || []), ...(patch.combatUpdate.enemyStatusRemove || [])],
+        playerStatusAdd: [...(previous.playerStatusAdd || []), ...(patch.combatUpdate.playerStatusAdd || [])],
+        playerStatusRemove: [...(previous.playerStatusRemove || []), ...(patch.combatUpdate.playerStatusRemove || [])]
+      };
+      if (patch.combatUpdate.enemyHpChange !== undefined) {
+        merged.combatUpdate.enemyHpChange = (previous.enemyHpChange || 0) + patch.combatUpdate.enemyHpChange;
+      }
+      if (patch.combatUpdate.enemyQiChange !== undefined) {
+        merged.combatUpdate.enemyQiChange = (previous.enemyQiChange || 0) + patch.combatUpdate.enemyQiChange;
+      }
+      if (patch.combatUpdate.enemyAcChange !== undefined) {
+        merged.combatUpdate.enemyAcChange = (previous.enemyAcChange || 0) + patch.combatUpdate.enemyAcChange;
+      }
       if (patch.combatUpdate.enemyInnerInjuryChange !== undefined) {
-        merged.combatUpdate.enemyInnerInjuryChange = (merged.combatUpdate.enemyInnerInjuryChange || 0) + patch.combatUpdate.enemyInnerInjuryChange;
+        merged.combatUpdate.enemyInnerInjuryChange = (previous.enemyInnerInjuryChange || 0) + patch.combatUpdate.enemyInnerInjuryChange;
+      }
+      if (patch.combatUpdate.enemyQiCost !== undefined) {
+        merged.combatUpdate.enemyQiCost = (previous.enemyQiCost || 0) + patch.combatUpdate.enemyQiCost;
+      }
+      if (patch.combatUpdate.roundDelta !== undefined) {
+        merged.combatUpdate.roundDelta = (previous.roundDelta || 0) + patch.combatUpdate.roundDelta;
       }
     }
     if (patch.newItem !== undefined) merged.newItem = patch.newItem;

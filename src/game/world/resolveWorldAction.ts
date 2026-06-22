@@ -11,7 +11,6 @@ import {
 } from "../combat";
 import type { EnemyTurnResult } from "../combat";
 import { advanceWorldLocally, applyPatchToState, mergeGamePatches } from "../engine";
-import { abilityValue, calculateInnerInjuryPressure, resolveInnerInjuryDelta } from "../rules";
 import {
   buildNamelessTutorialCompletionPatch,
   buildNamelessTutorialObjective,
@@ -108,8 +107,7 @@ export type WorldResolution = {
   };
 };
 
-const TRAVEL_COMMAND = /^前往[“"]?(.+?)[”"]?$/;
-const TRAINING_LABEL = "练功运转";
+const TRAVEL_COMMAND = /^前往[“"【]?(.+?)[”"】]?$/;
 const MEDITATION_LABEL = "调息疗伤";
 const TRAINING_KEYWORDS = ["练功", "打坐", "运功", "冲关", "强练"];
 const MEDITATION_KEYWORDS = ["调息", "运气疗伤", "静坐疗伤"];
@@ -127,38 +125,6 @@ function buildPendingCheckPrompt(
 ) {
   const modeText = rollMode === "advantage" ? "2d20 取高" : rollMode === "disadvantage" ? "2d20 取低" : "1d20";
   return `${label}需要先做一次${abilityLabel}判定，DC ${dc}。请掷 ${modeText}，再加 ${abilityLabel}。`;
-}
-
-function findMartialArtInAction(state: GameState, action: string) {
-  return state.character.martialArts.find((art) => action.includes(art.name));
-}
-
-function isInternalTrainingAction(action: string) {
-  return includesAny(action, ["内功", "内劲", "吐纳", "运转内功", "冲关", "周天"]);
-}
-
-function isTechniqueTrainingAction(action: string) {
-  return includesAny(action, ["演练", "拆招", "揣摩", "琢磨", "手法", "招式", "认穴"]);
-}
-
-function resolveTrainingAbilityKey(action: string, art?: MartialArt) {
-  if (art?.category === "internal" || art?.linkedAbility === "wis" || isInternalTrainingAction(action)) return "wis";
-  if (art?.linkedAbility === "int" || isTechniqueTrainingAction(action)) return "int";
-  return "int";
-}
-
-function trainingAbilityLabel(abilityKey: "int" | "wis") {
-  return abilityKey === "wis" ? "心境" : "悟性";
-}
-
-function trainingFailureDelta(state: GameState) {
-  return resolveInnerInjuryDelta(
-    calculateInnerInjuryPressure(
-      abilityValue(state.character.abilities, "wis"),
-      abilityValue(state.character.abilities, "con"),
-      "training_failure"
-    )
-  );
 }
 
 function resolveStoryPatch(
@@ -267,36 +233,6 @@ function resolvePendingStoryCheck(
     };
   }
 
-  if (label === TRAINING_LABEL) {
-    const art = state.character.martialArts.find((entry) => entry.id === state.pendingCheck?.martialArtId);
-    if (success) {
-      const strongSuccess = hit.total >= hit.dc + 5;
-      return {
-        textId: "default_scene",
-        textOverride: art
-          ? `${art.name}这一轮运转得还算顺，真气渐渐归拢，周身气息也稳了下来。`
-          : "你稳稳运转周天，气息渐渐归拢，练功总算没走岔。",
-        patch: withWorldPatch(state, globalUpdate, {
-          pendingCheck: undefined,
-          qiRecovery: strongSuccess ? 2 : 1,
-          innerInjuryChange: art?.category === "internal" ? -2 : 0
-        })
-      };
-    }
-
-    return {
-      textId: "default_scene",
-      textOverride: art
-        ? `${art.name}这一轮运转得太急，真气倒卷，经脉被震得生疼。`
-        : "你这一轮运气过急，真气倒卷，经脉立刻被冲得发麻。",
-      patch: withWorldPatch(state, globalUpdate, {
-        pendingCheck: undefined,
-        innerInjuryChange: trainingFailureDelta(state),
-        qiChange: hit.total <= hit.dc - 5 ? -1 : 0
-      })
-    };
-  }
-
   if (label === MEDITATION_LABEL) {
     if (success) {
       const strongSuccess = hit.total >= hit.dc + 5;
@@ -347,30 +283,10 @@ function maybeHandleRecoveryOrTraining(
   if (state.combat.active) return undefined;
 
   if (includesAny(action, TRAINING_KEYWORDS)) {
-    const art = findMartialArtInAction(state, action);
-    const abilityKey = resolveTrainingAbilityKey(action, art);
-    const abilityLabel = trainingAbilityLabel(abilityKey);
-    const check = {
-      kind: "world" as const,
-      label: TRAINING_LABEL,
-      abilityKey,
-      martialArtId: art?.id,
-      dc: abilityKey === "wis" ? 13 : 12,
-      reason: art
-        ? abilityKey === "wis"
-          ? `你想借 ${art.name} 运转气机，这一步得先看心神和真气能不能稳住。`
-          : `你想借 ${art.name} 揣摩招路，这一步得先看悟性够不够把门路理顺。`
-        : abilityKey === "wis"
-          ? "你想强行运转周天，这一步得先看心神和真气能不能稳住。"
-          : "你想把招式门路重新理清，这一步得先看悟性能不能把手法吃透。",
-      risk: abilityKey === "wis"
-        ? "若走岔了气，经脉会先受冲击。"
-        : "若练偏了招路，你只会越练越乱，白白费神。"
-    };
     return {
       textId: "default_scene",
-      textOverride: buildPendingCheckPrompt(TRAINING_LABEL, abilityLabel, check.dc),
-      patch: withWorldPatch(state, globalUpdate, firstActionPatch, { pendingCheck: check })
+      textOverride: "练功已经收口到角色页。获得秘笈、传授或现场来源后，请在角色页的修行面板里研读、演练或参照修炼；单靠输入“练功”不会再直接增加真气或推进功法。",
+      patch: withWorldPatch(state, globalUpdate, firstActionPatch, { pendingCheck: undefined })
     };
   }
 
