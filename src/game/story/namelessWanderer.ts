@@ -379,7 +379,7 @@ function resolveQuestResolved(state: GameState, questId: string): GamePatch | un
           active: true,
           stage: "trust",
           note: "你替客栈稳住了场面，双儿和掌柜都开始把你当成真正靠得住的人。",
-          supportUnlocked: ["care", "stash", "message"]
+          supportUnlocked: ["care", "medicine", "stash", "message", "practice"]
         }
       ],
       storyFlagsAdd: [
@@ -658,7 +658,7 @@ function resolveStoryCheckPassed(state: GameState, checkId: StoryCheckId): GameP
           stage: "partiality",
           allowCompanion: true,
           note: "你救下掌柜后，双儿被正式托付给你，只等你愿不愿意带她走。",
-          supportUnlocked: ["care", "stash", "message"]
+          supportUnlocked: ["care", "medicine", "stash", "message", "practice", "guard"]
         }
       ],
       storyFlagsAdd: [
@@ -685,14 +685,99 @@ function resolveStoryCheckPassed(state: GameState, checkId: StoryCheckId): GameP
 function resolveStoryCheckFailed(state: GameState, checkId: StoryCheckId): GamePatch | undefined {
   if (state.chapterState.id !== NAMELESS_WANDERER_CHAPTER_ID) return undefined;
 
+  if (checkId === CHECK_STEADY_INN) {
+    const progress = resolveQuestResolved(state, QUEST_WANDERER_1);
+    return {
+      ...progress,
+      hpChange: -2,
+      relationshipChanges: [
+        ...(progress?.relationshipChanges || []).filter((change) => change.name !== "双儿"),
+        { name: "双儿", delta: 3, attitude: "担忧" },
+        { name: "掌柜", delta: -3, attitude: "观望" }
+      ],
+      storyFlagsAdd: [
+        ...(progress?.storyFlagsAdd || []),
+        "complication:inn-unsteady",
+        triggerFlag("onStoryCheckFailed", checkId)
+      ],
+      rumorAdd: [
+        ...(progress?.rumorAdd || []),
+        {
+          text: "客栈前堂虽暂时收住，却有人趁乱记下了你的样貌。往后大理城里的风声会更快追上你。",
+          kind: "rumor",
+          location: "大理城",
+          source: "local-mainline"
+        }
+      ],
+      systemNote: "你没有完全压住客栈乱局，自己也被擦伤。主线仍会推进，但客栈这边留下了一处不稳的后患。"
+    };
+  }
+
+  if (checkId === CHECK_TRACK_SCHOLAR) {
+    const progress = resolveQuestResolved(state, QUEST_WANDERER_2);
+    return {
+      ...progress,
+      hpChange: -2,
+      relationshipChanges: [
+        ...(progress?.relationshipChanges || []),
+        { name: "段誉", delta: 2, attitude: "歉然" },
+        { name: "木婉清", delta: -2, attitude: "冷眼" }
+      ],
+      storyFlagsAdd: [
+        ...(progress?.storyFlagsAdd || []),
+        "complication:mountain-late",
+        triggerFlag("onStoryCheckFailed", checkId)
+      ],
+      combatUpdate: {
+        ...(progress?.combatUpdate || {}),
+        playerStatusAdd: ["exposed"],
+        lastCombatEvent: "你追山道慢了半步，下一场开局会更被动。"
+      },
+      systemNote: "你追上得晚了些，段誉和木婉清仍被你接住，但追兵已经抢到更好的位置。下一场冲突开局更危险。"
+    };
+  }
+
   if (checkId === CHECK_SAVE_INNKEEPER) {
     return {
       hpChange: -3,
-      relationshipChanges: [
-        { name: "双儿", delta: 4, attitude: "担忧" }
+      questUpdates: [
+        { id: QUEST_WANDERER_4, status: "resolved" },
+        { id: QUEST_WANDERER_5, title: "双儿去留", text: mainQuestBlueprints[QUEST_WANDERER_5].questText, status: "active" }
       ],
-      storyFlagsAdd: [triggerFlag("onStoryCheckFailed", checkId)],
-      systemNote: "掌柜受了伤，双儿把这桩事牢牢记在了心里。"
+      objectiveUpdate: {
+        title: "处理客栈后患",
+        text: "掌柜受了伤，双儿仍愿跟你走，却也放心不下客栈。你得决定是带她同行，还是先让她留下照料。",
+        location: "大理城",
+        npc: "双儿"
+      },
+      relationshipChanges: [
+        { name: "双儿", delta: 6, attitude: "担忧" },
+        { name: "掌柜", delta: 2, attitude: "托付" }
+      ],
+      npcUpdates: [
+        { name: "双儿", hidden: false, discovered: true, recruitable: true, status: "一边照看掌柜，一边等你把去留说定" }
+      ],
+      relationshipRouteUpdates: [
+        {
+          npcId: ROUTE_SHUANGER,
+          kind: "retainer",
+          active: true,
+          stage: "partiality",
+          allowCompanion: true,
+          note: "掌柜受了伤，双儿对你更担心，也更难把自己从客栈里拔出来。",
+          supportUnlocked: ["care", "medicine", "message", "guard"]
+        }
+      ],
+      storyFlagsAdd: [
+        "route:shuang-er:owner-wounded",
+        "route:shuang-er:offered",
+        triggerFlag("onStoryCheckFailed", checkId)
+      ],
+      questStateUpdates: [
+        { id: QUEST_WANDERER_4, status: "resolved", stage: "owner-wounded" },
+        { id: QUEST_WANDERER_5, status: "active", stage: "shuang-er-offered-wounded" }
+      ],
+      systemNote: "掌柜受了伤，双儿把这桩事牢牢记在了心里。主线继续推进，但她的随行会带着客栈后患。"
     };
   }
 
@@ -764,7 +849,7 @@ function resolveStoryChoice(state: GameState, choiceId: StoryChoiceId): GamePatc
           stage: "follow",
           allowCompanion: true,
           note: "掌柜把她交给了你，而她也自愿把自己放在你身边，长期追随一段。",
-          supportUnlocked: ["care", "stash", "message", "escort"]
+          supportUnlocked: ["care", "medicine", "stash", "message", "practice", "guard", "housekeeping", "escort"]
         }
       ],
       storyFlagsAdd: [
@@ -840,7 +925,7 @@ function resolveStoryChoice(state: GameState, choiceId: StoryChoiceId): GamePatc
           stage: "partiality",
           allowCompanion: true,
           note: "你暂时没有带她走，但她已经把自己放在一个会为你留位置的地方。",
-          supportUnlocked: ["care", "stash", "message"]
+          supportUnlocked: ["care", "medicine", "stash", "message", "practice", "housekeeping"]
         }
       ],
       storyFlagsAdd: [

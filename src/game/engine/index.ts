@@ -70,6 +70,12 @@ export function mergeGamePatches(...patches: Array<GamePatch | undefined>): Game
       if (patch.combatUpdate.roundDelta !== undefined) {
         merged.combatUpdate.roundDelta = (previous.roundDelta || 0) + patch.combatUpdate.roundDelta;
       }
+      if (patch.combatUpdate.enemySuppressedFinisherUntilRound !== undefined) {
+        merged.combatUpdate.enemySuppressedFinisherUntilRound = patch.combatUpdate.enemySuppressedFinisherUntilRound;
+      }
+      if (patch.combatUpdate.enemyPhase !== undefined) {
+        merged.combatUpdate.enemyPhase = patch.combatUpdate.enemyPhase;
+      }
     }
     if (patch.newItem !== undefined) merged.newItem = patch.newItem;
     if (patch.removeItemId !== undefined) merged.removeItemId = patch.removeItemId;

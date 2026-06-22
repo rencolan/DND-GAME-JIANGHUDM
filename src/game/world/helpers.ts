@@ -272,6 +272,37 @@ export function buildCombatActionCheck(
 
 export function buildShuangErSupportPatch(state: GameState): GamePatch | undefined {
   const stage = routeStage(state, "shuang-er");
+  if (state.combat.active && (stage === "partiality" || stage === "follow" || stage === "enduring")) {
+    const bossFight = state.combat.enemyArchetype === "boss";
+    const canDelayFinisher = !bossFight && (stage === "follow" || stage === "enduring");
+    return {
+      hpChange: 2,
+      qiRecovery: stage === "follow" || stage === "enduring" ? 1 : undefined,
+      combatUpdate: {
+        playerStatusAdd: ["guarded"],
+        enemyStatusAdd: stage === "follow" || stage === "enduring" ? ["controlled"] : undefined,
+        enemySuppressedFinisherUntilRound: canDelayFinisher ? (state.combat.round || 1) + 1 : undefined,
+        enemyIntent: "双儿抢到你身侧半步，短打和袖中暗劲正好截住敌人的进身。",
+        lastCombatEvent: bossFight ? "双儿贴身护主，强敌攻势稍缓" : "双儿贴身护主"
+      },
+      systemNote: bossFight
+        ? "双儿不声不响贴到你身侧，替你护住破绽。强敌没有被完全截断攻势，但节奏被她缓了一缓。"
+        : "双儿不声不响贴到你身侧，一手替你护住破绽，一手用短打扰乱敌人进身。"
+    };
+  }
+
+  if (state.combat.active && stage === "trust") {
+    return {
+      hpChange: 2,
+      combatUpdate: {
+        playerStatusAdd: ["guarded"],
+        enemyIntent: "双儿替你看住身后一线，敌人这一轮很难抓到空门。",
+        lastCombatEvent: "双儿替你守住身后"
+      },
+      systemNote: "双儿虽未正式随行，却已经替你守住身后一线，你这一轮更稳。"
+    };
+  }
+
   if (stage === "trust" && !hasStoryFlag(state, "support:shuang-er:medicine")) {
     return {
       newItem: {
@@ -291,8 +322,193 @@ export function buildShuangErSupportPatch(state: GameState): GamePatch | undefin
   if (stage === "partiality" && !hasStoryFlag(state, "support:shuang-er:travel")) {
     return {
       qiRecovery: 1,
+      innerInjuryChange: -4,
       storyFlagsAdd: ["support:shuang-er:travel"],
-      systemNote: "双儿替你把路上的零碎先整理好了，你终于能稳稳喘口气。"
+      systemNote: "双儿替你把路上的零碎、药囊和换洗布条都整理好了，你终于能稳稳喘口气。"
+    };
+  }
+
+  if (stage === "follow" || stage === "enduring") {
+    return {
+      hpChange: 3,
+      qiRecovery: 1,
+      innerInjuryChange: -6,
+      systemNote: "双儿替你收拾行囊、温药理伤，又轻声提醒你别逞强。你身上的疲乏缓下去不少。"
+    };
+  }
+
+  return undefined;
+}
+
+export function buildNpcSupportPatch(state: GameState, npcIdOrName: string): GamePatch | undefined {
+  const npc = state.npcs.find((entry) => entry.id === npcIdOrName || entry.name === npcIdOrName);
+  const key = npc?.id || npcIdOrName;
+  const combatSupportFlag = `support:${key}:combat:${state.combat.combatId || `${state.worldDay}:${state.combat.enemy || "unknown"}`}`;
+  const dailySupportFlag = `support:${key}:used:${state.worldDay}`;
+  const supportFlag = state.combat.active ? combatSupportFlag : dailySupportFlag;
+
+  if (state.combat.active && !npc?.companion) {
+    return {
+      systemNote: `${npc?.name || "对方"}眼下并未与你同行，不能在这场战斗里替你出手。`
+    };
+  }
+
+  if (hasStoryFlag(state, supportFlag)) {
+    return {
+      systemNote: state.combat.active
+        ? `${npc?.name || "对方"}这场战斗已经帮过你一次，眼下只能靠你自己接住后手。`
+        : `${npc?.name || "对方"}今日已经帮过你一次，眼下不好再强求。`
+    };
+  }
+
+  if (key === "shuang-er") {
+    const patch = buildShuangErSupportPatch(state);
+    return patch
+      ? { ...patch, storyFlagsAdd: [...(patch.storyFlagsAdd || []), supportFlag] }
+      : { storyFlagsAdd: [supportFlag], qiRecovery: 1, systemNote: "双儿替你把零碎照应妥当，你稍稍回稳了一口气。" };
+  }
+
+  if (key === "a-zhu") {
+    if (state.combat.active) {
+      return {
+        storyFlagsAdd: [supportFlag],
+        combatUpdate: {
+          playerStatusAdd: ["screened"],
+          enemyStatusAdd: state.combat.enemyArchetype === "boss" ? undefined : ["exposed"],
+          enemyIntent: "阿朱用假身形和错位声响替你遮了一瞬，敌人的判断慢了半拍。",
+          lastCombatEvent: "阿朱易容误导"
+        },
+        systemNote: "阿朱没有硬拼，只用假身形和错位声响替你遮住一瞬。"
+      };
+    }
+
+    return {
+      storyFlagsAdd: [supportFlag],
+      rumorAdd: [{
+        text: "阿朱替你换了个身份去打听，带回一条不走明路的消息：姑苏水路还有一处私下接头点。",
+        kind: "hook",
+        location: "姑苏",
+        npc: "阿朱",
+        source: "npc-support"
+      }],
+      systemNote: "阿朱替你易容打探，补出一条隐秘线索。"
+    };
+  }
+
+  if (key === "wang-yuyan") {
+    return state.combat.active
+      ? {
+        storyFlagsAdd: [supportFlag],
+        combatUpdate: {
+          enemyStatusAdd: ["exposed"],
+          enemyIntent: "王语嫣点破了对方招路，你终于看清下一处破绽。",
+          lastCombatEvent: "王语嫣识破敌招"
+        },
+        systemNote: "王语嫣低声点破对方招路，敌人露出破绽。"
+      }
+      : {
+        storyFlagsAdd: [supportFlag],
+        attributeInsightAdd: [{ id: `insight:wang-yuyan:${state.actionCount}`, choices: ["int", "wis"], reason: "王语嫣替你拆解武学路数" }],
+        systemNote: "王语嫣替你拆解一路武学，你得到一次可落到悟性或心境上的心得。"
+      };
+  }
+
+  if (key === "duan-yu") {
+    if (state.combat.active) {
+      return {
+        storyFlagsAdd: [supportFlag],
+        qiRecovery: 1,
+        combatUpdate: {
+          playerStatusAdd: ["screened"],
+          enemyIntent: "段誉脚下急转，替你把敌人视线带偏了一线。",
+          lastCombatEvent: "段誉凌乱步法牵制"
+        },
+        systemNote: "段誉慌中有快，脚下急转替你牵偏敌人视线，你趁机回稳一口真气。"
+      };
+    }
+
+    return {
+      storyFlagsAdd: [supportFlag],
+      qiRecovery: 1,
+      rumorAdd: [{
+        text: "段誉又提起无量山石室的步图和运气残痕，你可以回无量山继续追凌波与北冥线索。",
+        kind: "hook",
+        location: "无量山",
+        npc: "段誉",
+        source: "npc-support"
+      }],
+      systemNote: "段誉替你补起无量山石室的细节，你的真气也稍稍回稳。"
+    };
+  }
+
+  if (key === "mu-wanqing") {
+    return state.combat.active
+      ? {
+        storyFlagsAdd: [supportFlag],
+        combatUpdate: {
+          enemyStatusAdd: ["controlled"],
+          enemySuppressedFinisherUntilRound: state.combat.enemyArchetype === "boss" ? undefined : (state.combat.round || 1) + 1,
+          lastCombatEvent: state.combat.enemyArchetype === "boss" ? "木婉清冷箭牵制强敌" : "木婉清冷箭压住敌人"
+        },
+        systemNote: state.combat.enemyArchetype === "boss"
+          ? "木婉清一箭逼得强敌稍稍偏身，但这种人物不会被一箭完全封住杀招。"
+          : "木婉清一箭压住对方进身，敌人下手被迫收乱。"
+      }
+      : {
+        storyFlagsAdd: [supportFlag],
+        pendingCheck: {
+          label: "借木婉清冷箭潜行",
+          abilityKey: "dex",
+          rollMode: "advantage",
+          dc: 12,
+          reason: "木婉清替你压住视线，你可借这个空当潜行或抢位。",
+          suggestedAction: "掷优势身法判定。"
+        },
+        systemNote: "木婉清替你压住远处视线，下一次潜行或抢位更稳。"
+      };
+  }
+
+  if (key === "qiao-feng") {
+    if (state.combat.active) {
+      return {
+        storyFlagsAdd: [supportFlag],
+        combatUpdate: {
+          enemyStatusAdd: ["exposed"],
+          enemyIntent: "乔峰沉声一喝，逼得敌人气势一滞，门户短短露出一线。",
+          lastCombatEvent: "乔峰喝破敌势"
+        },
+        attributeInsightAdd: [{ id: `insight:qiao-feng-combat:${state.combat.combatId || state.actionCount}`, choices: ["str", "con"], reason: "乔峰临战喝破敌势" }],
+        systemNote: "乔峰没有替你接管战斗，只一声喝破敌势，给你看清正面破局的机会。"
+      };
+    }
+
+    return {
+      storyFlagsAdd: [supportFlag],
+      attributeInsightAdd: [{ id: `insight:qiao-feng:${state.actionCount}`, choices: ["str", "con"], reason: "乔峰以重手喂招" }],
+      systemNote: "乔峰不多讲，只以一记重手喂招。你得到一次可落到力道或根骨上的心得。"
+    };
+  }
+
+  if (key === "xu-zhu") {
+    if (state.combat.active) {
+      return {
+        storyFlagsAdd: [supportFlag],
+        qiRecovery: 1,
+        innerInjuryChange: -6,
+        combatUpdate: {
+          playerStatusAdd: ["guarded"],
+          enemyIntent: "虚竹替你稳住一口内息，敌人这一轮难以顺势逼伤。",
+          lastCombatEvent: "虚竹稳住内息"
+        },
+        systemNote: "虚竹急忙替你稳住内息，真气稍复，内伤也被压下一截。"
+      };
+    }
+
+    return {
+      storyFlagsAdd: [supportFlag],
+      qiRecovery: 1,
+      innerInjuryChange: -8,
+      systemNote: "虚竹替你稳住内息，真气稍复，内伤也缓了一截。"
     };
   }
 

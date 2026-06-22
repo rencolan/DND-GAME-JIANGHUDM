@@ -8,14 +8,16 @@ export const defaultMartialArts = {
       source: "大理段氏",
       role: "utility",
       tags: ["pierce", "injure"],
-      effectText: "穿防，并提高内伤压力。"
+      effectText: "穿防，并提高内伤压力。",
+      effect: { bonusDamageAgainstStatus: { sealed: 2, exposed: 1 } }
     }),
     art("dali-xinfa", "大理心法", "internal", "wis", "1d4", "以内息调匀经脉，适合稳守回气。", 1, {
       grade: "家传",
       source: "大理段氏",
       role: "recovery",
       tags: ["recover", "guard"],
-      effectText: "命中后回气，主运时调息更稳。"
+      effectText: "命中后回气，主运时调息更稳。",
+      effect: { qiGainOnHit: 1, applySelfStatus: ["guarded"] }
     }),
     art("duanjia-jianfa", "段家剑法", "external", "dex", "1d6", "剑路规整轻灵，讲究快进快收。", 0, {
       grade: "入门",
@@ -29,7 +31,8 @@ export const defaultMartialArts = {
       source: "大理段氏",
       role: "utility",
       tags: ["control"],
-      effectText: "命中后扰乱敌人下次出手。"
+      effectText: "命中后扰乱敌人下次出手。",
+      effect: { suppressEnemyFinisher: true }
     })
   ],
   jianghu: [
@@ -38,7 +41,8 @@ export const defaultMartialArts = {
       source: "江湖旧路",
       role: "pressure",
       tags: ["break"],
-      effectText: "命中后容易打出破绽。"
+      effectText: "命中后容易打出破绽。",
+      effect: { applyEnemyStatus: ["exposed"] }
     }),
     art("kuaidao-xiaojia", "快刀小架", "external", "dex", "1d6", "短刀小架简洁利落，专为近身抢位开门。", 0, {
       grade: "入门",
@@ -59,7 +63,8 @@ export const defaultMartialArts = {
       source: "江湖点穴散手",
       role: "utility",
       tags: ["break", "injure"],
-      effectText: "伤害低，但容易制造破绽并伤及气脉。"
+      effectText: "伤害低，但容易制造破绽并伤及气脉。",
+      effect: { applyEnemyStatus: ["sealed"], bonusDamageAgainstStatus: { exposed: 1 } }
     })
   ],
   shaolin: [
@@ -135,7 +140,8 @@ export const defaultMartialArts = {
       source: "乔峰所传线索",
       role: "finisher",
       tags: ["break", "injure"],
-      effectText: "重压破防；若敌人已有破绽，这一掌更像收束战局的终结手。"
+      effectText: "重压破防；若敌人已有破绽，这一掌更像收束战局的终结手。",
+      effect: { requireEnemyStatus: ["exposed"], bonusDamageAgainstStatus: { exposed: 4 } }
     })
   ],
   gusu: [
@@ -151,7 +157,8 @@ export const defaultMartialArts = {
       source: "姑苏慕容",
       role: "utility",
       tags: ["break", "injure"],
-      effectText: "认穴破防，并提高内伤压力。"
+      effectText: "认穴破防，并提高内伤压力。",
+      effect: { bonusDamageAgainstStatus: { sealed: 3, exposed: 1 } }
     })
   ],
   xingxiu: [
@@ -190,14 +197,16 @@ export const defaultMartialArts = {
       source: "逍遥派残页",
       role: "recovery",
       tags: ["recover", "injure"],
-      effectText: "伤害不高，核心是命中后回气并叠内伤压力，修炼失败风险高。"
+      effectText: "伤害不高，核心是命中后回气并叠内伤压力，修炼失败风险高。",
+      effect: { qiGainOnHit: 2, qiDrainOnHit: 1 }
     }),
     art("lingbo-weibu", "凌波微步步图", "external", "dex", "1d4", "步法飘忽，出手如在空隙间穿行。", 1, {
       grade: "高阶",
       source: "逍遥派步图",
       role: "defense",
       tags: ["guard", "pierce"],
-      effectText: "不是杀招，而是守势、脱身和穿防的身法核心。"
+      effectText: "不是杀招，而是守势、脱身和穿防的身法核心。",
+      effect: { applySelfStatus: ["screened"], suppressEnemyFinisher: true }
     }),
     art("tianshan-liuyang-zhang", "天山六阳掌前置", "internal", "wis", "2d6", "掌力堂皇正大，层层递进。", 2, {
       grade: "高阶",
@@ -211,7 +220,8 @@ export const defaultMartialArts = {
       source: "逍遥派",
       role: "utility",
       tags: ["control", "pierce"],
-      effectText: "拆招控场，兼具穿防。"
+      effectText: "拆招控场，兼具穿防。",
+      effect: { applyEnemyStatus: ["controlled"], suppressEnemyFinisher: true }
     }),
     art("shengsi-fu", "生死符控劲法", "internal", "wis", "2d6", "寒劲灌入经脉，出手便叫人变色。", 2, {
       grade: "高阶",
@@ -280,7 +290,8 @@ export const defaultMartialArts = {
       source: "丁春秋",
       role: "finisher",
       tags: ["injure", "control"],
-      effectText: "命中后封脉，迫使对手内功额外耗气。"
+      effectText: "命中后封脉，迫使对手内功额外耗气。",
+      effect: { applyEnemyStatus: ["sealed"], qiDrainOnHit: 1 }
     }),
     art("ding-sanxiao", "三笑逍遥散", "internal", "int", "2d6", "毒雾先行，逼人乱神失位。", 1, {
       grade: "邪门",
@@ -301,7 +312,8 @@ export const defaultMartialArts = {
       source: "游坦之",
       role: "pressure",
       tags: ["injure", "guard"],
-      effectText: "寒毒伤脉，同时守势坚韧；拖久会压住真气。"
+      effectText: "寒毒伤脉，同时守势坚韧；拖久会压住真气。",
+      effect: { applyEnemyStatus: ["cold"], applySelfStatus: ["guarded"] }
     }),
     art("you-tietou", "铁头硬撞", "external", "str", "1d10", "蛮横冲阵，靠一口狠劲硬撞开门户。", 0, {
       grade: "凶招",
@@ -323,7 +335,8 @@ export const defaultMartialArts = {
       role: "finisher",
       tags: ["pierce", "injure"],
       damageBonus: 2,
-      effectText: "无形刀气穿防，适合作为读招后的爆发，而不是每轮平推。"
+      effectText: "无形刀气穿防，适合作为读招后的爆发，而不是每轮平推。",
+      effect: { requireEnemyStatus: ["exposed", "controlled"], bonusDamageAgainstStatus: { exposed: 3, controlled: 2 } }
     }),
     art("jiu-longzhao", "龙爪擒拿", "external", "str", "2d8", "擒、锁、抓一气呵成，逼人近身崩盘。", 0, {
       grade: "上乘",
@@ -340,7 +353,8 @@ export const defaultMartialArts = {
       role: "finisher",
       tags: ["pierce", "injure"],
       damageBonus: 2,
-      effectText: "顶级穿防与内伤压力；真正强处在破防和连段资格。"
+      effectText: "顶级穿防与内伤压力；真正强处在破防和连段资格。",
+      effect: { bonusDamageAgainstStatus: { exposed: 3, sealed: 3, controlled: 2 } }
     })
   ]
 } as const;

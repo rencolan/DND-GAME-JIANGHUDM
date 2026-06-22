@@ -35,7 +35,7 @@ export function EnemyCard({ combat }: { combat: CombatState }) {
     <article className="enemy-card">
       <span>正在交手 · {archetype}</span>
       <b>{combat.enemy}</b>
-      <small>回合 {combat.round || 1} · {combat.phase || "awaiting_hit_check"}</small>
+      <small>回合 {combat.round || 1} · {combat.enemyPhase || combat.phase || "awaiting_hit_check"}</small>
       {combat.stakes && <small>{combat.stakes}</small>}
       {combat.enemyIntent && <small>意图：{combat.enemyIntent}</small>}
       <div className="enemy-bars">

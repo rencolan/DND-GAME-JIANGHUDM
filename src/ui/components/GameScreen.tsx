@@ -266,9 +266,8 @@ export function GameScreen({ session }: GameScreenProps) {
           companions={companions}
           activeRelationshipNpcs={activeRelationshipNpcs}
           onUseSupport={(npcId) => {
-            if (npcId === "shuang-er") {
-              void submitAction("我请双儿传话留意，替我备药并看住客栈动静");
-            }
+            const npcName = game.npcs.find((npc) => npc.id === npcId)?.name || npcId;
+            void submitAction(`请求支援：请${npcName}帮我补上这一手`);
           }}
         />
     );

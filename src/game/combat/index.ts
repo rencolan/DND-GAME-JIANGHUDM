@@ -42,6 +42,10 @@ type StartCombatOptions = Partial<PendingCheck> & {
 };
 
 type InjuryTrigger = "external_crit" | "internal_hit" | "internal_crit";
+type EnemyPhaseProfile = {
+  label: string;
+  intent: string;
+};
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
@@ -70,7 +74,7 @@ function firstEnemyArt(state: GameState) {
   return (state.combat.enemyMartialArts || [])[0];
 }
 
-function availableEnemyArts(state: GameState) {
+export function availableEnemyArts(state: GameState) {
   const enemyQi = state.combat.enemyQi || 0;
   return (state.combat.enemyMartialArts || []).filter((art) =>
     art.category !== "internal" || enemyQi >= (art.baseQiCost || 0)
@@ -98,18 +102,75 @@ function tagWeightForArchetype(art: MartialArt, archetype?: EnemyArchetype) {
   }
 }
 
-function adjustedArtWeight(state: GameState, art: MartialArt) {
+export function resolveEnemyPhase(state: GameState): EnemyPhaseProfile {
+  const name = state.combat.enemy || "";
+  const hp = state.combat.enemyHp || 0;
+  const maxHp = Math.max(1, state.combat.enemyMaxHp || 1);
+  const ratio = hp / maxHp;
+  const enemyStatuses = state.combat.enemyStatus || [];
+
+  if (name.includes("岳老三")) {
+    if (enemyStatuses.includes("controlled")) {
+      return { label: "暴躁失位", intent: "岳老三被你带乱了步子，正想用蛮力硬把节奏抢回来。" };
+    }
+    if (ratio <= 0.4) return { label: "鳄剪夺命", intent: "岳老三急了，鳄嘴剪越压越重，想用一记重手定局。" };
+    return { label: "正面硬压", intent: "岳老三不讲花巧，硬冲硬砸，逼你正面接招。" };
+  }
+
+  if (name.includes("云中鹤")) {
+    if (enemyStatuses.includes("exposed")) {
+      return { label: "身法露底", intent: "云中鹤身法被你逼出破绽，正急着撤开重整。" };
+    }
+    if ((state.combat.round || 1) % 2 === 0) {
+      return { label: "绕身掠影", intent: "云中鹤脚下绕开正面，想从侧后拿你要害。" };
+    }
+    return { label: "快手试探", intent: "云中鹤不肯站定，先用快手探你的反应。" };
+  }
+
+  if (name.includes("游坦之")) {
+    if (ratio <= 0.45) {
+      return { label: "寒毒缠身", intent: "游坦之越伤越不退，寒毒和硬劲反而缠得更紧。" };
+    }
+    return { label: "寒劲硬缠", intent: "游坦之靠寒毒硬贴，想把战斗拖到你真气不顺。" };
+  }
+
+  return {
+    label: state.combat.enemyPhase || "交手",
+    intent: state.combat.enemyIntent || inferCombatStakes(name || DEFAULT_ENEMY_NAME)
+  };
+}
+
+function phaseWeightModifier(state: GameState, art: MartialArt) {
+  const phase = resolveEnemyPhase(state).label;
+  const tags = art.tags || [];
+  let weight = 0;
+
+  if (phase === "鳄剪夺命" && art.role === "finisher") weight += 5;
+  if (phase === "暴躁失位" && tags.includes("control")) weight -= 3;
+  if (phase === "绕身掠影" && (tags.includes("pierce") || tags.includes("control"))) weight += 3;
+  if (phase === "身法露底" && art.role === "finisher") weight -= 4;
+  if (phase === "寒毒缠身" && tags.includes("guard")) weight += 3;
+  if (phase === "寒劲硬缠" && tags.includes("injure")) weight += 2;
+
+  return weight;
+}
+
+export function adjustedArtWeight(state: GameState, art: MartialArt) {
   const round = state.combat.round || 1;
   const enemyQi = state.combat.enemyQi || 0;
   const enemyMaxQi = state.combat.enemyMaxQi || 1;
   const enemyStatuses = state.combat.enemyStatus || [];
+  const finisherSuppressed = art.role === "finisher"
+    && (state.combat.enemySuppressedFinisherUntilRound || 0) >= round;
   let weight = 1 + tagWeightForArchetype(art, state.combat.enemyArchetype);
 
+  if (finisherSuppressed) weight -= 6;
   if (enemyStatuses.includes("controlled") && art.role === "finisher") weight -= 5;
   if (art.role === "finisher" && round % 3 !== 0) weight -= 3;
   if (art.category === "internal" && enemyQi <= Math.ceil(enemyMaxQi * 0.35)) weight -= 3;
   if (enemyStatuses.includes("exposed") && hasMartialTag(art, "guard")) weight += 2;
   if (enemyQi <= 1 && hasMartialTag(art, "recover")) weight += 4;
+  weight += phaseWeightModifier(state, art);
 
   return Math.max(1, weight);
 }
@@ -190,7 +251,7 @@ function resolveEscapeRollMode(state: GameState, action: string): RollMode {
   return "normal";
 }
 
-function effectiveEnemyAc(state: GameState) {
+export function effectiveEnemyAc(state: GameState) {
   const base = state.combat.enemyAc || 12;
   const statuses = state.combat.enemyStatus || [];
   return Math.max(1, base - (statuses.includes("exposed") ? 2 : 0) + (statuses.includes("guarded") ? 1 : 0));
@@ -404,6 +465,7 @@ export function resolveEnemyTurn(state: GameState, advanceRound = true): EnemyTu
   }
 
   const enemyArt = chooseEnemyArt(state);
+  const phase = resolveEnemyPhase(state);
   const actionLabel = enemyArt?.name || "普通一击";
   const attackAbility = enemyArt?.linkedAbility || "dex";
   const enemyAttackMod = findAbilityModifier(state.combat.enemyAbilities, attackAbility);
@@ -482,8 +544,9 @@ export function resolveEnemyTurn(state: GameState, advanceRound = true): EnemyTu
           ...(hit ? statusFromEnemyArt(enemyArt) : [])
         ],
         playerStatusRemove: ["guarded", "screened"],
-        enemyIntent: heroHpAfter > 0 ? findEnemyPreset(enemyName).intent : undefined,
-        lastCombatEvent: `${enemyName} ${hit ? "命中" : "未命中"}：${actionLabel}`,
+      enemyIntent: heroHpAfter > 0 ? phase.intent : undefined,
+      enemyPhase: phase.label,
+      lastCombatEvent: `${enemyName} ${hit ? "命中" : "未命中"}：${actionLabel}`,
         phase: nextPhase,
         roundDelta: heroHpAfter > 0 && advanceRound ? 1 : 0,
         stakes: inferCombatStakes(enemyName)
@@ -580,8 +643,15 @@ export function resolveCombatDamage(state: GameState, damage: CombatDamageResult
 
   const enemyName = state.combat.enemy || DEFAULT_ENEMY_NAME;
   const enemyBefore = state.combat.enemyHp || 0;
-  const enemyAfter = clamp(enemyBefore - damage.total, 0, state.combat.enemyMaxHp || 1);
   const pendingArt = state.character.martialArts.find((art) => art.id === state.pendingDamage?.martialArtId);
+  const effect = pendingArt?.effect;
+  const enemyStatuses = state.combat.enemyStatus || [];
+  const statusBonus = Object.entries(effect?.bonusDamageAgainstStatus || {}).reduce((sum, [status, bonus]) =>
+    sum + (enemyStatuses.includes(status) ? bonus : 0), 0);
+  const requiredStatusMet = !effect?.requireEnemyStatus?.length
+    || effect.requireEnemyStatus.some((status) => enemyStatuses.includes(status));
+  const effectiveDamage = requiredStatusMet ? damage.total + statusBonus : Math.max(0, damage.total - 2);
+  const enemyAfter = clamp(enemyBefore - effectiveDamage, 0, state.combat.enemyMaxHp || 1);
   const enemyInnerInjuryDelta = resolveInnerInjuryFromAttack(
     abilityValue(state.character.abilities, "wis"),
     abilityValue(state.combat.enemyAbilities, "con"),
@@ -592,24 +662,35 @@ export function resolveCombatDamage(state: GameState, damage: CombatDamageResult
 
   return {
     pendingDamage: undefined,
-    qiRecovery: hasMartialTag(pendingArt, "recover") ? 1 : undefined,
+    qiRecovery: (hasMartialTag(pendingArt, "recover") ? 1 : 0) + (effect?.qiGainOnHit || 0) || undefined,
     combatUpdate: {
-      enemyHpChange: -damage.total,
+      enemyHpChange: -effectiveDamage,
+      enemyQiChange: effect?.qiDrainOnHit ? -effect.qiDrainOnHit : undefined,
       enemyInnerInjuryChange: enemyInnerInjuryDelta,
       enemyStatusAdd: [
         ...(hasMartialTag(pendingArt, "break") || damage.total >= 10 ? ["exposed"] : []),
-        ...(hasMartialTag(pendingArt, "control") ? ["controlled"] : [])
+        ...(hasMartialTag(pendingArt, "control") ? ["controlled"] : []),
+        ...(effect?.applyEnemyStatus || [])
       ],
       enemyStatusRemove: ["guarded"],
-      playerStatusAdd: hasMartialTag(pendingArt, "guard") ? ["guarded"] : [],
+      playerStatusAdd: [
+        ...(hasMartialTag(pendingArt, "guard") ? ["guarded"] : []),
+        ...(effect?.applySelfStatus || [])
+      ],
+      enemySuppressedFinisherUntilRound: effect?.suppressEnemyFinisher
+        ? (state.combat.round || 1) + 1
+        : undefined,
       phase: enemyAfter > 0 ? "resolving_enemy_response" : "ended",
       stakes: inferCombatStakes(enemyName),
-      lastCombatEvent: `${pendingArt?.name || "攻击"} 造成 ${damage.total} 点伤害${effectLines ? `；${effectLines}` : ""}`
+      lastCombatEvent: `${pendingArt?.name || "攻击"} 造成 ${effectiveDamage} 点伤害${effectLines ? `；${effectLines}` : ""}`
     },
     combatAction: enemyAfter <= 0 ? "exit" : "none",
     systemNote: [
-      `【伤害】${pendingArt?.name || damage.label || "攻击"} 对 ${enemyName} 造成 ${damage.total} 点伤害。`,
+      `【伤害】${pendingArt?.name || damage.label || "攻击"} 对 ${enemyName} 造成 ${effectiveDamage} 点伤害。`,
+      statusBonus ? `连段加成：+${statusBonus}` : undefined,
+      requiredStatusMet ? undefined : "条件未足：这招没有打出完整威力，伤害 -2。",
       `${enemyName} HP：${enemyBefore} → ${enemyAfter}`,
+      effect?.qiDrainOnHit ? `${enemyName} 真气 -${effect.qiDrainOnHit}` : undefined,
       enemyInnerInjuryDelta ? `内伤：+${enemyInnerInjuryDelta}` : undefined,
       effectLines ? `状态：${effectLines}` : undefined
     ].filter(Boolean).join("\n")

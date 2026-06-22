@@ -19,8 +19,18 @@ function relationshipTier(relationship: number) {
 }
 
 function canUseSupport(game: GameState, npcId: string) {
+  const supportIds = new Set(["shuang-er", "a-zhu", "wang-yuyan", "duan-yu", "mu-wanqing", "qiao-feng", "xu-zhu"]);
+  if (!supportIds.has(npcId)) return false;
+
+  const npc = game.npcs.find((entry) => entry.id === npcId);
+  if (game.combat.active) {
+    const combatFlag = `support:${npcId}:combat:${game.combat.combatId || `${game.worldDay}:${game.combat.enemy || "unknown"}`}`;
+    return Boolean(npc?.companion && !game.storyFlags.includes(combatFlag));
+  }
+
+  if (game.storyFlags.includes(`support:${npcId}:used:${game.worldDay}`)) return false;
   const route = primaryRouteForNpc(game, npcId);
-  return npcId === "shuang-er" && Boolean(route?.active && route.supportUnlocked?.length);
+  return Boolean(npc?.companion || route?.active || (npc && (!npc.hidden || npc.discovered) && npc.relationship >= 45));
 }
 
 export function CompanionsTab({ game, companions, activeRelationshipNpcs, onUseSupport }: CompanionsTabProps) {

@@ -193,7 +193,8 @@ function normalizeMartialArt(raw: Partial<MartialArt> & { name: string }): Marti
     source: raw.source || template?.source || "江湖所得",
     role: raw.role || template?.role,
     tags: raw.tags || template?.tags || [],
-    effectText: raw.effectText || template?.effectText
+    effectText: raw.effectText || template?.effectText,
+    effect: raw.effect || template?.effect
   };
 }
 
@@ -465,6 +466,8 @@ function makeEnemyCombat(name = "黑衣刺客"): GameState["combat"] {
     enemyInnerInjury: 0,
     enemyStatus: [],
     playerStatus: [],
+    enemySuppressedFinisherUntilRound: 0,
+    enemyPhase: "开场",
     enemyIntent: preset.intent,
     enemyArchetype: preset.archetype,
     lastCombatEvent: ""
@@ -490,6 +493,8 @@ function normalizeCombat(combat: GameState["combat"] | undefined): GameState["co
     enemyInnerInjury: combat.enemyInnerInjury ?? normalized.enemyInnerInjury ?? 0,
     enemyStatus: combat.enemyStatus || [],
     playerStatus: combat.playerStatus || [],
+    enemySuppressedFinisherUntilRound: combat.enemySuppressedFinisherUntilRound || 0,
+    enemyPhase: combat.enemyPhase || normalized.enemyPhase,
     enemyIntent: combat.enemyIntent || normalized.enemyIntent,
     enemyArchetype: combat.enemyArchetype || normalized.enemyArchetype,
     lastCombatEvent: combat.lastCombatEvent || normalized.lastCombatEvent,
@@ -961,6 +966,12 @@ export function applyPatchToState(prev: GameState, patch: GamePatch): GameState 
     combat.playerStatus = [...playerStatus];
     if (patch.combatUpdate.enemyIntent) {
       combat.enemyIntent = patch.combatUpdate.enemyIntent;
+    }
+    if (typeof patch.combatUpdate.enemySuppressedFinisherUntilRound === "number") {
+      combat.enemySuppressedFinisherUntilRound = patch.combatUpdate.enemySuppressedFinisherUntilRound;
+    }
+    if (patch.combatUpdate.enemyPhase) {
+      combat.enemyPhase = patch.combatUpdate.enemyPhase;
     }
     if (patch.combatUpdate.lastCombatEvent) {
       combat.lastCombatEvent = patch.combatUpdate.lastCombatEvent;

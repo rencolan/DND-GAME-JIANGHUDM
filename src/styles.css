@@ -753,6 +753,11 @@ button {
   border-color: rgba(179, 84, 71, .48);
 }
 
+.opportunity-card.selected {
+  border-color: rgba(242, 212, 141, .72);
+  background: rgba(54, 40, 28, .9);
+}
+
 .opportunity-card:disabled {
   opacity: .62;
 }
@@ -784,6 +789,89 @@ button {
 
 .opportunity-card:disabled em {
   color: #e8b0a5;
+}
+
+.opportunity-detail {
+  padding: 11px 12px;
+  border: 1px solid rgba(242, 212, 141, .24);
+  border-radius: 8px;
+  background: rgba(18, 13, 9, .86);
+}
+
+.opportunity-detail.high {
+  border-color: rgba(179, 84, 71, .45);
+}
+
+.opportunity-detail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.opportunity-detail-head span {
+  color: var(--gold);
+  font-size: 12px;
+}
+
+.opportunity-detail-head b {
+  color: var(--gold-2);
+}
+
+.opportunity-detail p {
+  margin: 8px 0 0;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.opportunity-detail dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  margin: 10px 0 0;
+}
+
+.opportunity-detail dl div {
+  min-width: 0;
+  padding: 7px 8px;
+  border: 1px solid rgba(242, 212, 141, .16);
+  border-radius: 8px;
+  background: rgba(31, 24, 18, .72);
+}
+
+.opportunity-detail dt,
+.opportunity-detail dd {
+  margin: 0;
+}
+
+.opportunity-detail dt {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.opportunity-detail dd {
+  margin-top: 3px;
+  color: var(--gold-2);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.opportunity-detail > button {
+  margin-top: 10px;
+  min-height: 38px;
+  width: 100%;
+  border: 1px solid rgba(242, 212, 141, .58);
+  border-radius: 8px;
+  background: var(--gold);
+  color: #201409;
+  font-weight: 700;
+}
+
+.opportunity-detail > button:disabled {
+  border-color: rgba(242, 212, 141, .22);
+  background: rgba(54, 40, 28, .8);
+  color: var(--muted);
 }
 
 .pending-check small {
@@ -3102,6 +3190,10 @@ button {
 
   .opportunity-card {
     min-height: 112px;
+  }
+
+  .opportunity-detail dl {
+    grid-template-columns: 1fr;
   }
 
   .setup-panel.compact {

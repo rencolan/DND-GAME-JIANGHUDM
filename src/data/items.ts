@@ -51,6 +51,47 @@ export const itemCatalog: Item[] = [
   item("tea-brick", "茶砖", "压得结实的茶砖，拿去换钱也算顺手。", 1, { type: "goods", value: 16 }),
   item("silk-pouch", "丝纹小囊", "做工还算细的丝纹小囊，市面上颇有人肯收。", 1, { type: "goods", value: 28 }),
   item("jade-pin", "玉簪钗", "小巧显眼的玉簪钗，带在身上也算值钱。", 1, { type: "goods", value: 42, canSteal: true }),
+  item("ledger-copy", "账页副本", "客栈账簿里夹出的誊页，能卖消息，也可能牵出掌柜背后的人。", 1, {
+    type: "quest",
+    value: 36,
+    canSell: false,
+    canSteal: true
+  }),
+  item("disguise-kit", "易容小匣", "阿朱随身的小匣，里面是薄粉、胶泥和几张能改口音的纸条。", 1, {
+    type: "goods",
+    value: 48,
+    canSteal: true
+  }),
+  item("martial-commentary-page", "武学批注残页", "王语嫣手边的批注残页，短短几行却能点破一门招式的破绽。", 1, {
+    type: "quest",
+    value: 44,
+    canSell: false,
+    canSteal: true
+  }),
+  item("wuliang-step-note", "无量步图残记", "段誉记下的石室步图残记，凌波与北冥的线索都隐在边角。", 1, {
+    type: "quest",
+    value: 50,
+    canSell: false,
+    canSteal: true
+  }),
+  item("sleeve-poison-powder", "袖箭毒粉", "木婉清箭囊里压着的小包毒粉，能吓人，也容易把局面闹大。", 1, {
+    type: "goods",
+    value: 38,
+    dangerous: true,
+    canSteal: true
+  }),
+  item("yanmen-old-token", "雁门旧案残签", "乔峰贴身收着的残签，牵着一桩他不愿随便示人的旧案。", 1, {
+    type: "quest",
+    value: 58,
+    canSell: false,
+    canSteal: true
+  }),
+  item("shaolin-sealed-letter", "少林封缄残信", "虚竹护着的残信，封口已旧，拆开便很难再装回原样。", 1, {
+    type: "quest",
+    value: 46,
+    canSell: false,
+    canSteal: true
+  }),
   item("dali-heart-manual", "大理心法抄本", "客栈旧抄本整理出的基础心法，适合稳步打底。", 1, {
     type: "manual",
     value: 32,

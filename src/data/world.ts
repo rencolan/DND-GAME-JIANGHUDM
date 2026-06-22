@@ -38,7 +38,7 @@ export const npcs: Npc[] = [
   { id: "a-zhu", name: "阿朱", title: "易容巧手", portrait: portrait("a-zhu"), location: "大理城", goal: "打探黑衣人的真实身份", attitude: "亲近", relationship: 62, lastSeen: "城南茶肆", status: "暗访", tags: ["潜入"], companion: false },
   { id: "a-zi", name: "阿紫", title: "星宿门下", portrait: portrait("a-zi"), location: "星宿海", goal: "盯住值得利用的人与物", attitude: "乖张", relationship: 24, lastSeen: "毒雾边市", status: "行踪不定", tags: ["星宿", "毒"], companion: false, hidden: true, discovered: false },
   { id: "mu-wanqing", name: "木婉清", title: "黑衣箭影", portrait: portrait("mu-wanqing"), location: "无量山", goal: "拦着段誉突围，不让追兵靠近半步", attitude: "冷硬", relationship: 60, lastSeen: "无量山山道", status: "未现身", tags: ["追踪"], companion: false, hidden: true, discovered: false },
-  { id: "shuang-er", name: "双儿", title: "客栈丫鬟", portrait: portrait("shuang-er"), location: "大理城", goal: "照看伤者，替掌柜留心往来人的动静", attitude: "温柔", relationship: 58, lastSeen: "客栈后院", status: "在客栈帮忙", tags: ["客栈", "疗伤", "细心"], companion: false, hidden: true, discovered: false, recruitable: false }
+  { id: "shuang-er", name: "双儿", title: "温柔侍女", portrait: portrait("shuang-er"), location: "大理城", goal: "照看你和客栈，也把一身护主短打、针线药理和细密心思都藏在安静处", attitude: "温柔", relationship: 58, lastSeen: "客栈后院", status: "在客栈帮忙，手边常备针线药囊", tags: ["客栈", "疗伤", "细心", "护主", "短打"], companion: false, hidden: true, discovered: false, recruitable: false }
 ];
 
 export const merchantProfiles: MerchantProfile[] = [
@@ -71,7 +71,8 @@ export const stealProfiles: StealProfile[] = [
     pocketItems: [
       { itemId: "cloth-wrap", count: 1 },
       { itemId: "dried-meat", count: 1 },
-      { itemId: "tea-brick", count: 1 }
+      { itemId: "tea-brick", count: 1 },
+      { itemId: "ledger-copy", count: 1 }
     ],
     exposure: "watched",
     failureRelationshipPenalty: 16,
@@ -83,7 +84,8 @@ export const stealProfiles: StealProfile[] = [
     pocketSilver: 26,
     pocketItems: [
       { itemId: "jade-pin", count: 1 },
-      { itemId: "silk-pouch", count: 1 }
+      { itemId: "silk-pouch", count: 1 },
+      { itemId: "disguise-kit", count: 1 }
     ],
     exposure: "watched",
     failureRelationshipPenalty: 12
@@ -93,17 +95,41 @@ export const stealProfiles: StealProfile[] = [
     threatTier: "normal",
     pocketSilver: 12,
     pocketItems: [
-      { itemId: "jade-pin", count: 1 }
+      { itemId: "jade-pin", count: 1 },
+      { itemId: "martial-commentary-page", count: 1 }
     ],
     exposure: "private",
     failureRelationshipPenalty: 10
+  },
+  {
+    npcId: "duan-yu",
+    threatTier: "normal",
+    pocketSilver: 18,
+    pocketItems: [
+      { itemId: "wuliang-step-note", count: 1 },
+      { itemId: "silk-pouch", count: 1 }
+    ],
+    exposure: "private",
+    failureRelationshipPenalty: 14
+  },
+  {
+    npcId: "mu-wanqing",
+    threatTier: "elite",
+    pocketSilver: 16,
+    pocketItems: [
+      { itemId: "sleeve-poison-powder", count: 1 }
+    ],
+    exposure: "private",
+    failureRelationshipPenalty: 16,
+    failureCombatEnemyId: "black-assassin"
   },
   {
     npcId: "xu-zhu",
     threatTier: "normal",
     pocketSilver: 10,
     pocketItems: [
-      { itemId: "tea-brick", count: 1 }
+      { itemId: "tea-brick", count: 1 },
+      { itemId: "shaolin-sealed-letter", count: 1 }
     ],
     exposure: "watched",
     failureRelationshipPenalty: 10
@@ -114,7 +140,8 @@ export const stealProfiles: StealProfile[] = [
     pocketSilver: 54,
     pocketItems: [
       { itemId: "tea-brick", count: 1 },
-      { itemId: "silk-pouch", count: 1 }
+      { itemId: "silk-pouch", count: 1 },
+      { itemId: "yanmen-old-token", count: 1 }
     ],
     exposure: "crowded",
     failureRelationshipPenalty: 18

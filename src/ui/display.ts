@@ -143,8 +143,12 @@ export function relationshipRouteStageLabel(stage: RelationshipRouteState["stage
 export function supportLabel(label: string) {
   return {
     care: "照料",
+    medicine: "备药",
     stash: "收物",
     message: "传话",
+    practice: "陪练",
+    guard: "护主",
+    housekeeping: "持家",
     escort: "追随"
   }[label] || label;
 }

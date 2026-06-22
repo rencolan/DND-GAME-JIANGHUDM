@@ -24,6 +24,7 @@ export type ThreatTier = "weak" | "normal" | "elite" | "master";
 export type ExposureTier = "private" | "watched" | "crowded";
 export type EconomyActionKind = "shop_list" | "buy" | "sell" | "steal";
 export type OpportunityRisk = "low" | "medium" | "high";
+export type OpportunityCategory = "mainline" | "training" | "relationship" | "exploration" | "trade" | "danger";
 export type NamelessWandererChapterStage =
   | "tutorial_story"
   | "tutorial_combat"
@@ -64,6 +65,17 @@ export interface MartialArt {
   role?: MartialRole;
   tags?: MartialTag[];
   effectText?: string;
+  effect?: MartialEffect;
+}
+
+export interface MartialEffect {
+  applyEnemyStatus?: string[];
+  applySelfStatus?: string[];
+  requireEnemyStatus?: string[];
+  bonusDamageAgainstStatus?: Record<string, number>;
+  qiGainOnHit?: number;
+  qiDrainOnHit?: number;
+  suppressEnemyFinisher?: boolean;
 }
 
 export interface InternalStyleEntry {
@@ -160,8 +172,13 @@ export interface LocationOpportunity {
   title: string;
   text: string;
   actionText: string;
+  category: OpportunityCategory;
   risk: OpportunityRisk;
   reward: string;
+  failure: string;
+  checkAbility?: string;
+  timeCost?: string;
+  requirement?: string;
   disabledReason?: string;
 }
 
@@ -314,6 +331,8 @@ export interface CombatState {
   enemyInnerInjury?: number;
   enemyStatus?: string[];
   playerStatus?: string[];
+  enemySuppressedFinisherUntilRound?: number;
+  enemyPhase?: string;
   enemyIntent?: string;
   enemyArchetype?: EnemyArchetype;
   lastCombatEvent?: string;
@@ -507,6 +526,8 @@ export interface GamePatch {
     enemyStatusRemove?: string[];
     playerStatusAdd?: string[];
     playerStatusRemove?: string[];
+    enemySuppressedFinisherUntilRound?: number;
+    enemyPhase?: string;
     enemyIntent?: string;
     lastCombatEvent?: string;
     enemyMartialArtUsed?: string;

@@ -28,6 +28,7 @@ import { resolveEconomyCheckResult, tryResolveEconomyAction } from "./economySys
 import {
   buildCombatActionCheck,
   buildCombatEscapePromptText,
+  buildNpcSupportPatch,
   buildShuangErSupportPatch,
   buildSuggestedCheck,
   currentLocationId,
@@ -112,6 +113,11 @@ const MEDITATION_LABEL = "调息疗伤";
 const TRAINING_KEYWORDS = ["练功", "打坐", "运功", "冲关", "强练"];
 const MEDITATION_KEYWORDS = ["调息", "运气疗伤", "静坐疗伤"];
 const INN_REST_KEYWORDS = ["休息", "住店", "歇一晚"];
+const SUPPORT_KEYWORDS = ["请求支援", "求助", "支援", "帮我", "帮忙", "援手", "协助"];
+const SUPPORTED_NPC_IDS = new Set(["shuang-er", "a-zhu", "wang-yuyan", "duan-yu", "mu-wanqing", "qiao-feng", "xu-zhu"]);
+const SHUANGER_PRACTICE_KEYWORDS = ["练武", "练功", "切磋", "喂招", "短打", "护身", "拆招"];
+const SHUANGER_TALK_KEYWORDS = ["谈心", "说话", "聊天", "家常", "问她", "陪她"];
+const SHUANGER_HOUSEKEEPING_KEYWORDS = ["整理行囊", "收拾行囊", "备药", "针线", "药囊", "内务", "盘点"];
 
 function withWorldPatch(state: GameState, globalUpdate: boolean, ...patches: Array<GamePatch | undefined>): GamePatch {
   return mergeGamePatches(advanceWorldLocally(state, globalUpdate), ...patches);
@@ -503,6 +509,119 @@ function maybeEnterGenericCombat(state: GameState, action: string, globalUpdate:
   };
 }
 
+function canRequestNpcSupport(state: GameState, npcId: string) {
+  if (!SUPPORTED_NPC_IDS.has(npcId)) return false;
+  const npc = state.npcs.find((entry) => entry.id === npcId);
+  if (!npc) return false;
+  if (state.combat.active) return npc.companion;
+  const route = Object.values(state.relationshipRoutes).find((entry) => entry.npcId === npcId && entry.active);
+  const visible = !npc.hidden || npc.discovered || npc.companion;
+  return npc.companion || Boolean(route) || (visible && npc.relationship >= 45);
+}
+
+function maybeUseNpcSupport(state: GameState, action: string, globalUpdate: boolean, firstActionPatch?: GamePatch): WorldResolution | undefined {
+  if (!includesAny(action, SUPPORT_KEYWORDS)) return undefined;
+  if (state.pendingDamage) return undefined;
+
+  const npc = state.npcs.find((entry) =>
+    canRequestNpcSupport(state, entry.id)
+    && (action.includes(entry.name) || action.includes(entry.id))
+  );
+  if (!npc) return undefined;
+
+  const supportPatch = buildNpcSupportPatch(state, npc.id);
+  if (!supportPatch) return undefined;
+
+  return {
+    textId: "default_scene",
+    patch: withWorldPatch(state, globalUpdate, firstActionPatch, supportPatch),
+    meta: { targetName: npc.name, locationName: currentLocationName(state) },
+    textOverride: supportPatch.systemNote || `${npc.name}应下你的请求，替你补上这一手。`
+  };
+}
+
+function maybeHandleShuangErInteraction(state: GameState, action: string, globalUpdate: boolean, firstActionPatch?: GamePatch): WorldResolution | undefined {
+  if (state.combat.active || !action.includes("双儿")) return undefined;
+
+  const stage = routeStage(state, "shuang-er") || "unawakened";
+  const shuangEr = state.npcs.find((npc) => npc.id === "shuang-er");
+  const canInteract = Boolean(shuangEr?.companion || (shuangEr && (!shuangEr.hidden || shuangEr.discovered) && stage !== "unawakened"));
+  if (!canInteract) return undefined;
+
+  if (includesAny(action, SHUANGER_PRACTICE_KEYWORDS)) {
+    const alreadyPracticed = hasStoryFlag(state, `interaction:shuang-er:practice:${state.worldDay}`);
+    const patch: GamePatch = alreadyPracticed
+      ? {
+        qiRecovery: 1,
+        systemNote: "双儿又陪你把护身短打过了一遍，只是今日心得已足，更多是替你稳住手感。"
+      }
+      : {
+        qiRecovery: 1,
+        relationshipChanges: [{ npcId: "shuang-er", delta: 2, attitude: "亲近" }],
+        attributeInsightAdd: [{ id: `insight:shuang-er-practice:${state.worldDay}`, choices: ["dex", "wis"], reason: "双儿陪你练护身短打，进退轻巧却处处护人" }],
+        storyFlagsAdd: [`interaction:shuang-er:practice:${state.worldDay}`],
+        systemNote: "双儿陪你拆了几路护身短打。她出手不重，却总能先一步补住你身侧空门。"
+      };
+    return {
+      textId: "default_scene",
+      patch: withWorldPatch(state, globalUpdate, firstActionPatch, patch),
+      meta: { targetName: "双儿", locationName: currentLocationName(state) },
+      textOverride: patch.systemNote
+    };
+  }
+
+  if (includesAny(action, SHUANGER_TALK_KEYWORDS)) {
+    const alreadyTalked = hasStoryFlag(state, `interaction:shuang-er:talk:${state.worldDay}`);
+    const patch: GamePatch = alreadyTalked
+      ? {
+        systemNote: "双儿安静听你把话说完，末了只轻轻点头，把你没说出口的顾虑也记下了。"
+      }
+      : {
+        relationshipChanges: [{ npcId: "shuang-er", delta: 2, attitude: "温柔" }],
+        rumorAdd: [{
+          text: "双儿留心到客栈近来有几拨人都在问无量山和姑苏水路，问法不同，像是背后另有同一个源头。",
+          kind: "rumor",
+          location: "大理城",
+          npc: "双儿",
+          source: "shuang-er-interaction"
+        }],
+        storyFlagsAdd: [`interaction:shuang-er:talk:${state.worldDay}`],
+        systemNote: "你和双儿说了会儿话。她不抢话，却把客栈里细碎的人情动静替你拢成了一条线。"
+      };
+    return {
+      textId: "default_scene",
+      patch: withWorldPatch(state, globalUpdate, firstActionPatch, patch),
+      meta: { targetName: "双儿", locationName: currentLocationName(state) },
+      textOverride: patch.systemNote
+    };
+  }
+
+  if (includesAny(action, SHUANGER_HOUSEKEEPING_KEYWORDS)) {
+    const alreadyPrepared = hasStoryFlag(state, `interaction:shuang-er:housekeeping:${state.worldDay}`);
+    const patch: GamePatch = alreadyPrepared
+      ? {
+        hpChange: 1,
+        systemNote: "双儿又替你检查了一遍行囊和药囊，确认没有遗漏。"
+      }
+      : {
+        hpChange: 2,
+        qiRecovery: 1,
+        innerInjuryChange: -4,
+        relationshipChanges: [{ npcId: "shuang-er", delta: 1, attitude: "细心" }],
+        storyFlagsAdd: [`interaction:shuang-er:housekeeping:${state.worldDay}`],
+        systemNote: "双儿把针线、药布、干粮和换洗布条一一归好，又替你重新包扎旧伤。"
+      };
+    return {
+      textId: "default_scene",
+      patch: withWorldPatch(state, globalUpdate, firstActionPatch, patch),
+      meta: { targetName: "双儿", locationName: currentLocationName(state) },
+      textOverride: patch.systemNote
+    };
+  }
+
+  return undefined;
+}
+
 export function resolveWorldAction(
   action: string,
   state: GameState,
@@ -516,6 +635,12 @@ export function resolveWorldAction(
   const firstActionPatch = namelessStory
     ? resolveNamelessStoryTrigger(state, { kind: "first_action" })
     : buildOriginOpeningPatch(state);
+
+  const npcSupport = maybeUseNpcSupport(state, action, globalUpdate, firstActionPatch);
+  if (npcSupport) return npcSupport;
+
+  const shuangErInteraction = maybeHandleShuangErInteraction(state, action, globalUpdate, firstActionPatch);
+  if (shuangErInteraction) return shuangErInteraction;
 
   if (
     state.combat.active

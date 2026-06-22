@@ -15,15 +15,15 @@ export function buildLocalDmNarration(result: WorldResolution) {
     case "story_check_inn_success":
       return "你一出手，客栈前堂的乱局总算被压住，局面开始朝你能掌控的方向收束。";
     case "story_check_inn_fail":
-      return "你虽接住了场面，但还没能彻底压住乱局，客栈里的人心仍在晃。";
+      return "你虽接住了场面，却没能彻底压住乱局。客栈里留下了后患，但也正因这场混乱，无量山那条线被更急地推到了你面前。";
     case "story_check_mountain_success":
       return "你顺着山道硬生生追上了那条线，眼前的风波终于从传闻变成了实局。";
     case "story_check_mountain_fail":
-      return "你还是慢了半步，只能看着山道深处的局势继续往前滚。";
+      return "你还是慢了半步，赶到时局势已经更乱。段誉和木婉清仍被你接住，但追兵也抢到了更好的位置。";
     case "story_check_innkeeper_success":
       return "你及时把掌柜从乱局里拽了出来，这一手让客栈这边重新稳住了气口。";
     case "story_check_innkeeper_fail":
-      return "你出手还是慢了，掌柜虽没倒下，但这一场已经见了血。";
+      return "你出手还是慢了，掌柜虽没倒下，但这一场已经见了血。双儿把这桩事牢牢记住，大理线也带着后患进入收口。";
     case "story_check_generic_success":
       return "这一手让局面往前推开了一层，事情开始对你有了回应。";
     case "story_check_generic_fail":
