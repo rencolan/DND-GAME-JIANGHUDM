@@ -77,6 +77,21 @@ backend/koboldcpp-launch.bat
 
 and edit the executable path and arguments for your machine.
 
+## Remote play launcher
+
+If your public backend service is already deployed, use:
+
+```bash
+start-remote-llm-bridge.bat
+```
+
+It only starts:
+
+- local `koboldcpp`
+- local `bridge`
+
+This is the right launcher when Render hosts `backend/service` for you.
+
 ## Public endpoints
 
 - `GET /healthz`

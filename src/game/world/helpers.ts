@@ -16,7 +16,25 @@ export type ParsedDamageResult = {
   total: number;
 };
 
-const ESCAPE_ACTION_KEYWORDS = ["逃跑", "撤退", "脱身", "夺路", "翻窗遁走", "借势退开"];
+const ESCAPE_ACTION_KEYWORDS = [
+  "逃跑",
+  "逃走",
+  "跑路",
+  "跑",
+  "撤退",
+  "撤离",
+  "退走",
+  "脱身",
+  "脱战",
+  "不打了",
+  "先撤",
+  "夺路",
+  "溜走",
+  "开溜",
+  "离开战斗",
+  "翻窗遁走",
+  "借势退开"
+];
 
 export function includesAny(text: string, keywords: string[]) {
   return keywords.some((keyword) => text.includes(keyword));

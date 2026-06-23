@@ -1066,8 +1066,59 @@ export function useGameSession() {
       return;
     }
 
-    if (wantsEscape && baseGame.combat.phase === "awaiting_hit_check" && !isEscapePendingCheck(baseGame.pendingCheck)) {
+    if (wantsEscape && baseGame.combat.phase === "awaiting_hit_check") {
+      if (isEscapePendingCheck(baseGame.pendingCheck)) {
+        setGame((prev) => ({
+          ...prev,
+          messages: [
+            ...prev.messages,
+            {
+              id: uid("dm"),
+              role: "dm",
+              text: "你已经在尝试脱身了。请点开“待逃脱”，先把这次逃跑判定掷完。"
+            }
+          ]
+        }));
+        closePanels();
+        setBusy(false);
+        return;
+      }
+
       await promptCombatEscapeCheck(baseGame, text);
+      return;
+    }
+
+    if (wantsEscape && baseGame.combat.phase === "awaiting_damage_roll") {
+      setGame((prev) => ({
+        ...prev,
+        messages: [
+          ...prev.messages,
+          {
+            id: uid("dm"),
+            role: "dm",
+            text: "这一轮已经打到伤害结算了，先把当前伤害掷完；等回到出手空当时，再选择逃跑。"
+          }
+        ]
+      }));
+      closePanels();
+      setBusy(false);
+      return;
+    }
+
+    if (wantsEscape && baseGame.combat.phase === "resolving_enemy_response") {
+      setGame((prev) => ({
+        ...prev,
+        messages: [
+          ...prev.messages,
+          {
+            id: uid("dm"),
+            role: "dm",
+            text: "敌方这一手还没结完，现在不能抢先脱战。等敌方回合结束后，再尝试逃跑。"
+          }
+        ]
+      }));
+      closePanels();
+      setBusy(false);
       return;
     }
 
