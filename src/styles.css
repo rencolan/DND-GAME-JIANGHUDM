@@ -720,6 +720,29 @@ button {
   color: var(--gold-2);
 }
 
+.pending-check-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 4px 0;
+}
+
+.pending-check-title b {
+  margin: 0;
+}
+
+.dc-chip {
+  flex: 0 0 auto;
+  padding: 5px 10px;
+  border: 1px solid rgba(242, 212, 141, .55);
+  border-radius: 999px;
+  background: rgba(242, 212, 141, .12);
+  color: var(--gold-2);
+  font-size: 14px;
+  letter-spacing: .04em;
+}
+
 .objective-card p, .pending-check p, .enemy-card p {
   margin: 0;
   color: var(--text);
@@ -3148,6 +3171,29 @@ button {
   color: var(--gold);
   font-size: 11px;
   line-height: 22px;
+}
+
+.dice-dc-banner {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 10px;
+  border: 1px solid rgba(242, 212, 141, .32);
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(242, 212, 141, .16), rgba(157, 47, 47, .1));
+}
+
+.dice-dc-banner span {
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: .08em;
+}
+
+.dice-dc-banner strong {
+  color: var(--gold-2);
+  font-size: 24px;
+  line-height: 1;
 }
 
 .dice-summary b {

@@ -198,7 +198,7 @@ export function GameScreen({ session }: GameScreenProps) {
   const actionSummary = pendingDamage
     ? `${pendingDamage.label} · ${pendingDamageDice}${pendingDamage.damageBonus ? ` +${pendingDamage.damageBonus}` : ""}`
     : currentCheck
-      ? `${currentCheck.label} · DC ${currentCheck.dc}`
+      ? `DC ${currentCheck.dc} · ${currentCheck.label}`
       : undefined;
   const actionHint = pendingDamage
     ? "命中已确认，下一步直接掷伤害。"

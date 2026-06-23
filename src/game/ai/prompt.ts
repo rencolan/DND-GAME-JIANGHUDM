@@ -2,7 +2,7 @@ import { enemyPresets } from "../../data";
 import type { GameState, Npc, SceneType } from "../../types";
 
 export type CombatNarrationContext = {
-  stage: "player_check" | "player_escape" | "player_hit_confirmed" | "player_damage" | "enemy_turn_start" | "enemy_turn_end";
+  stage: "player_check" | "player_escape" | "player_hit_confirmed" | "player_damage" | "enemy_turn_start" | "enemy_turn_end" | "turn_end";
   actorName: string;
   targetName: string;
   round: number;
@@ -195,7 +195,8 @@ export function buildCombatNarrationPrompt(state: GameState, context: CombatNarr
     player_hit_confirmed: "玩家攻击命中，等待伤害",
     player_damage: "玩家伤害已经结算",
     enemy_turn_start: "敌方回合起手",
-    enemy_turn_end: "敌方回合结果"
+    enemy_turn_end: "敌方回合结果",
+    turn_end: "本回合收束"
   };
 
   return `你现在只负责战斗播报，不负责裁定。
@@ -208,7 +209,8 @@ export function buildCombatNarrationPrompt(state: GameState, context: CombatNarr
 6. 不要替玩家决定动作，也不要命令玩家接下来做什么。
 7. 只写外在可见的动作、架势、受击、闪避、环境和气势，不要代写玩家心理。
 8. 若当前阶段是“玩家脱身判定结果”，成功时只写如何抽身拉开，失败时只写脱身未成与空门外露。
-9. 结尾仍给一个极简 JSON 代码块，通常只写 {} 或 {"systemNote":"..."}。
+9. 若当前阶段是“本回合收束”，把玩家本回合动作结果与敌方接续结果合并成一次完整播报，不要拆成多段。
+10. 结尾仍给一个极简 JSON 代码块，通常只写 {} 或 {"systemNote":"..."}。
 
 [当前战斗阶段]
 阶段: ${stageLabelMap[context.stage]}
@@ -244,6 +246,7 @@ d20: ${context.naturalRoll ?? "未提供"}
 - 如果“是否暴击”为是，可以写势头更狠，但不要改动伤害事实。
 - 如果阶段是“敌方回合起手”，不要提前写命中和掉血结果。
 - 如果敌方状态变化不是“无”，必须用外在动作或架势写出这些状态变化，例如破绽、受扰、守势、内息被扰等。
+- 如果阶段是“本回合收束”，可以同时写玩家招式落点与敌方回击落点，但仍不得改写给定结果。
 - 不要替系统推进状态，不要发明新的判定要求。${enemyTurnStage ? "\n- 当前是敌方回合播报，只能写敌方动作、局面变化，以及玩家外在可见的结果。" : ""}
 
 \`\`\`json

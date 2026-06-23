@@ -45,7 +45,10 @@ export function PendingCheckCard({
   return (
     <section className="pending-check">
       <span>{pendingCheckTag}</span>
-      <b>{currentCheck.label} · DC {currentCheck.dc}</b>
+      <div className="pending-check-title">
+        <b>{currentCheck.label}</b>
+        <strong className="dc-chip">DC {currentCheck.dc}</strong>
+      </div>
       <p>{pendingCheckReason}</p>
       <small>当前势：{rollModeLabel(currentCheck.rollMode)}</small>
       {currentCheck.enemyIntent && <small>敌人意图：{currentCheck.enemyIntent}</small>}

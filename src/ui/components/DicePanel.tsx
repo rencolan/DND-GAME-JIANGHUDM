@@ -73,7 +73,7 @@ export function DicePanel({
   const summaryHeading = pendingDamage
     ? `${pendingDamage.label} · ${pendingDamageDice}${pendingDamage?.damageBonus ? ` +${pendingDamage.damageBonus}` : ""}`
     : currentCheck
-      ? `${currentCheck.label} · DC ${currentCheck.dc}`
+      ? currentCheck.label
       : "没有待处理判定";
   const summaryText = pendingDamage
     ? (pendingDamage.isCritical ? "暴击伤害已按翻倍骰计算，现在直接掷真实伤害。" : "命中已经确认，现在直接掷真实伤害。")
@@ -133,6 +133,12 @@ export function DicePanel({
               <span className="dice-kicker">{summaryTitle}</span>
               <span className="dice-badge">{currentModeLabel}</span>
             </div>
+            {currentCheck && (
+              <div className="dice-dc-banner">
+                <span>目标难度</span>
+                <strong>DC {currentCheck.dc}</strong>
+              </div>
+            )}
             <b>{summaryHeading}</b>
             <p>{summaryText}</p>
             {(summaryDetail || summaryNote) && (

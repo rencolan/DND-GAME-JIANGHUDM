@@ -137,7 +137,7 @@ function currentLocationName(state: GameState) {
 }
 
 function buildCombatFallbackText(
-  stage: "player_check" | "player_escape" | "player_hit_confirmed" | "player_damage" | "enemy_turn_start" | "enemy_turn_end",
+  stage: "player_check" | "player_escape" | "player_hit_confirmed" | "player_damage" | "enemy_turn_start" | "enemy_turn_end" | "turn_end",
   data: {
     actorName: string;
     targetName: string;
@@ -172,6 +172,10 @@ function buildCombatFallbackText(
       return (data.hit
         ? `${data.targetName}这一手${data.actionLabel || "攻击"}终于打实${data.critical ? "，且来势更狠" : ""}，这一轮的落点已经分明。`
         : `${data.targetName}这一手${data.actionLabel || "攻击"}来得虽急，却终究没能真正打实。`) + statusSuffix;
+    case "turn_end":
+      return data.hit === undefined
+        ? `${data.actorName}这一手${data.actionLabel || "攻势"}已经收束，${data.targetName}的身形也随之一沉。${statusSuffix}`
+        : `${data.actorName}这一轮动作刚收住，${data.targetName}便已接势回击；${data.hit ? "这一手终究打到了实处" : "这一手虽急，却没能真正打实"}。${statusSuffix}`;
     default:
       return "战局又往前逼了一步。";
   }
@@ -997,35 +1001,10 @@ export function useGameSession() {
     const playerStatusAfter = combatStatusLabels(finalState.combat.playerStatus);
     const narrationSteps: CombatAiStep[] = [
       {
-        state: playerState,
-        actionText,
-        prompt: buildCombatNarrationPrompt(playerState, {
-          stage: "enemy_turn_start",
-          actorName: enemyName,
-          targetName: playerState.character.name,
-          round: playerState.combat.round || 1,
-          locationName: currentLocationName(playerState),
-          sceneLabel: combatSceneLabels[playerState.sceneType],
-          actionText,
-          actionLabel: enemyTurn.details.actionLabel,
-          enemyIntent: playerState.pendingCheck?.enemyIntent || playerState.combat.enemyIntent,
-          heroHpBefore: enemyTurn.details.heroHpBefore,
-          heroHpAfter: enemyTurn.details.heroHpBefore,
-          enemyHpBefore: enemyTurn.details.enemyHpBefore,
-          enemyHpAfter: enemyTurn.details.enemyHpAfter,
-          nextPhase: enemyTurn.details.nextPhase
-        }),
-        fallbackText: buildCombatFallbackText("enemy_turn_start", {
-          actorName: playerState.character.name,
-          targetName: enemyName,
-          actionLabel: enemyTurn.details.actionLabel
-        })
-      },
-      {
         state: finalState,
         actionText,
         prompt: buildCombatNarrationPrompt(finalState, {
-          stage: "enemy_turn_end",
+          stage: "turn_end",
           actorName: enemyName,
           targetName: finalState.character.name,
           round: finalState.combat.round || playerState.combat.round || 1,
@@ -1052,7 +1031,7 @@ export function useGameSession() {
           playerStatusChange: combatStatusChangeText(playerState.combat.playerStatus, finalState.combat.playerStatus),
           nextPhase: enemyTurn.details.nextPhase
         }),
-        fallbackText: buildCombatFallbackText("enemy_turn_end", {
+        fallbackText: buildCombatFallbackText("turn_end", {
           actorName: finalState.character.name,
           targetName: enemyName,
           actionLabel: enemyTurn.details.actionLabel,
@@ -1080,11 +1059,11 @@ export function useGameSession() {
         ...outcome.state,
         messages: [
           ...outcome.state.messages,
+          ...narrationResults.map((result) => ({ id: uid("dm"), role: "dm" as const, text: result.text })),
           ...(options.playerSummary ? [{ id: uid("system"), role: "system" as const, text: options.playerSummary }] : []),
           { id: uid("system"), role: "system" as const, text: buildEnemyTurnSummary(enemyName, enemyTurn.details) },
           ...outcome.messages,
-          ...(errorMessage ? [{ id: uid("system"), role: "system" as const, text: errorMessage }] : []),
-          ...narrationResults.map((result) => ({ id: uid("dm"), role: "dm" as const, text: result.text }))
+          ...(errorMessage ? [{ id: uid("system"), role: "system" as const, text: errorMessage }] : [])
         ]
       };
     });
@@ -1539,64 +1518,6 @@ export function useGameSession() {
         nextStepMessage
       ]
     });
-
-    if (!stagedState.pendingDamage) return;
-
-    setBusy(true);
-    try {
-      const narrationResults = await runCombatNarrationSequence([
-        {
-          state: stagedState,
-          actionText: hitText,
-          prompt: buildCombatNarrationPrompt(stagedState, {
-            stage: "player_hit_confirmed",
-            actorName: stagedState.character.name,
-            targetName: stagedState.combat.enemy || "对手",
-            round: stagedState.combat.round || 1,
-            locationName: currentLocationName(stagedState),
-            sceneLabel: combatSceneLabels[stagedState.sceneType],
-            actionText: hitText,
-            actionLabel: art.name,
-            checkLabel: hit.label,
-            naturalRoll: hit.naturalRoll,
-            total: hit.total,
-            dc: hit.dc,
-            hit: hit.success,
-            critical: hit.isCritical,
-            enemyHpBefore: stagedState.combat.enemyHp,
-            enemyHpAfter: stagedState.combat.enemyHp,
-            heroHpBefore: stagedState.character.hp,
-            heroHpAfter: stagedState.character.hp,
-            nextPhase: stagedState.combat.phase
-          }),
-          fallbackText: buildCombatFallbackText("player_hit_confirmed", {
-            actorName: stagedState.character.name,
-            targetName: stagedState.combat.enemy || "对手",
-            actionLabel: art.name,
-            hit: true,
-            critical: Boolean(hit.isCritical)
-          })
-        }
-      ]);
-      const errorMessage = collectAiErrorMessage(narrationResults);
-
-      setGame((prev) => {
-        let patched = prev;
-        for (const result of narrationResults) {
-          patched = applyPatchToState(patched, result.patch);
-        }
-        return {
-          ...patched,
-          messages: [
-            ...patched.messages,
-            ...(errorMessage ? [{ id: uid("system"), role: "system" as const, text: errorMessage }] : []),
-            ...narrationResults.map((result) => ({ id: uid("dm"), role: "dm" as const, text: result.text }))
-          ]
-        };
-      });
-    } finally {
-      setBusy(false);
-    }
   }
 
   async function submitDamageResult(text: string, pendingDamage: PendingDamage) {
@@ -1658,114 +1579,52 @@ export function useGameSession() {
     }
     const narrationSteps: CombatAiStep[] = [
       {
-        state: playerState,
+        state: enemyTurn ? finalState : playerState,
         actionText: combinedText,
-        prompt: buildCombatNarrationPrompt(playerState, {
-          stage: "player_damage",
+        prompt: buildCombatNarrationPrompt(enemyTurn ? finalState : playerState, {
+          stage: "turn_end",
           actorName: playerState.character.name,
-          targetName: playerState.combat.enemy || "对手",
-          round: playerState.combat.round || 1,
-          locationName: currentLocationName(playerState),
-          sceneLabel: combatSceneLabels[playerState.sceneType],
+          targetName: playerState.combat.enemy || finalState.combat.enemy || "对手",
+          round: (enemyTurn ? finalState.combat.round : playerState.combat.round) || 1,
+          locationName: currentLocationName(enemyTurn ? finalState : playerState),
+          sceneLabel: combatSceneLabels[(enemyTurn ? finalState : playerState).sceneType],
           actionText: combinedText,
-          actionLabel: pendingDamage.label,
-          critical: pendingDamage.isCritical,
-          damage: damage.total,
-          damageDice: pendingDamage.isCritical
+          actionLabel: enemyTurn
+            ? `${pendingDamage.label}；${enemyTurn.details.actionLabel}`
+            : pendingDamage.label,
+          naturalRoll: enemyTurn?.details.naturalRoll,
+          total: enemyTurn?.details.total,
+          hit: enemyTurn?.details.hit,
+          critical: enemyTurn?.details.critical ?? pendingDamage.isCritical,
+          damage: enemyTurn?.details.damage ?? damage.total,
+          damageDice: enemyTurn?.details.damageDice || (pendingDamage.isCritical
             ? `${pendingDamage.damageDice}（暴击翻倍）`
-            : pendingDamage.damageDice,
-          damageBonus: pendingDamage.damageBonus,
+            : pendingDamage.damageDice),
+          damageBonus: enemyTurn?.details.damageBonus ?? pendingDamage.damageBonus,
           heroHpBefore: actionState.character.hp,
-          heroHpAfter: playerState.character.hp,
+          heroHpAfter: enemyTurn?.details.heroHpAfter ?? playerState.character.hp,
           enemyHpBefore: actionState.combat.enemyHp,
-          enemyHpAfter: playerState.combat.enemyHp,
+          enemyHpAfter: enemyTurn?.details.enemyHpAfter ?? playerState.combat.enemyHp,
           enemyStatusBefore: playerDamageEnemyStatusBefore,
-          enemyStatusAfter: playerDamageEnemyStatusAfter,
-          enemyStatusChange: combatStatusChangeText(actionState.combat.enemyStatus, playerState.combat.enemyStatus),
+          enemyStatusAfter: combatStatusLabels((enemyTurn ? finalState : playerState).combat.enemyStatus),
+          enemyStatusChange: combatStatusChangeText(actionState.combat.enemyStatus, (enemyTurn ? finalState : playerState).combat.enemyStatus),
           playerStatusBefore: playerDamagePlayerStatusBefore,
-          playerStatusAfter: playerDamagePlayerStatusAfter,
-          playerStatusChange: combatStatusChangeText(actionState.combat.playerStatus, playerState.combat.playerStatus),
-          nextPhase: playerState.combat.phase
+          playerStatusAfter: combatStatusLabels((enemyTurn ? finalState : playerState).combat.playerStatus),
+          playerStatusChange: combatStatusChangeText(actionState.combat.playerStatus, (enemyTurn ? finalState : playerState).combat.playerStatus),
+          enemyIntent: playerState.pendingCheck?.enemyIntent || game.pendingCheck?.enemyIntent,
+          nextPhase: (enemyTurn ? finalState : playerState).combat.phase
         }),
-        fallbackText: buildCombatFallbackText("player_damage", {
+        fallbackText: buildCombatFallbackText("turn_end", {
           actorName: playerState.character.name,
-          targetName: playerState.combat.enemy || "对手",
-          actionLabel: pendingDamage.label,
-          damage: damage.total,
-          critical: Boolean(pendingDamage.isCritical),
-          statusChange: combatStatusChangeText(actionState.combat.enemyStatus, playerState.combat.enemyStatus)
+          targetName: playerState.combat.enemy || finalState.combat.enemy || "对手",
+          actionLabel: enemyTurn ? `${pendingDamage.label}；${enemyTurn.details.actionLabel}` : pendingDamage.label,
+          hit: enemyTurn?.details.hit,
+          critical: Boolean(enemyTurn?.details.critical ?? pendingDamage.isCritical),
+          damage: enemyTurn?.details.damage ?? damage.total,
+          statusChange: combatStatusChangeText(actionState.combat.enemyStatus, (enemyTurn ? finalState : playerState).combat.enemyStatus)
         })
       }
     ];
-
-    if (enemyTurn) {
-      narrationSteps.push({
-        state: playerState,
-        actionText: combinedText,
-        prompt: buildCombatNarrationPrompt(playerState, {
-          stage: "enemy_turn_start",
-          actorName: enemyTurn.details.actionLabel ? (playerState.combat.enemy || "对手") : (playerState.combat.enemy || "对手"),
-          targetName: playerState.character.name,
-          round: playerState.combat.round || 1,
-          locationName: currentLocationName(playerState),
-          sceneLabel: combatSceneLabels[playerState.sceneType],
-          actionText: combinedText,
-          actionLabel: enemyTurn.details.actionLabel,
-          enemyIntent: playerState.pendingCheck?.enemyIntent || game.pendingCheck?.enemyIntent,
-          heroHpBefore: enemyTurn.details.heroHpBefore,
-          heroHpAfter: enemyTurn.details.heroHpBefore,
-          enemyHpBefore: enemyTurn.details.enemyHpBefore,
-          enemyHpAfter: enemyTurn.details.enemyHpAfter,
-          nextPhase: enemyTurn.details.nextPhase
-        }),
-        fallbackText: buildCombatFallbackText("enemy_turn_start", {
-          actorName: playerState.character.name,
-          targetName: playerState.combat.enemy || "对手",
-          actionLabel: enemyTurn.details.actionLabel
-        })
-      });
-      narrationSteps.push({
-        state: finalState,
-        actionText: combinedText,
-        prompt: buildCombatNarrationPrompt(finalState, {
-          stage: "enemy_turn_end",
-          actorName: finalState.combat.enemy || "对手",
-          targetName: finalState.character.name,
-          round: finalState.combat.round || 1,
-          locationName: currentLocationName(finalState),
-          sceneLabel: combatSceneLabels[finalState.sceneType],
-          actionText: combinedText,
-          actionLabel: enemyTurn.details.actionLabel,
-          naturalRoll: enemyTurn.details.naturalRoll,
-          total: enemyTurn.details.total,
-          hit: enemyTurn.details.hit,
-          critical: enemyTurn.details.critical,
-          damage: enemyTurn.details.damage,
-          damageDice: enemyTurn.details.damageDice,
-          damageBonus: enemyTurn.details.damageBonus,
-          heroHpBefore: enemyTurn.details.heroHpBefore,
-          heroHpAfter: enemyTurn.details.heroHpAfter,
-          enemyHpBefore: enemyTurn.details.enemyHpBefore,
-          enemyHpAfter: enemyTurn.details.enemyHpAfter,
-          enemyStatusBefore: combatStatusLabels(playerState.combat.enemyStatus),
-          enemyStatusAfter: combatStatusLabels(finalState.combat.enemyStatus),
-          enemyStatusChange: combatStatusChangeText(playerState.combat.enemyStatus, finalState.combat.enemyStatus),
-          playerStatusBefore: combatStatusLabels(playerState.combat.playerStatus),
-          playerStatusAfter: combatStatusLabels(finalState.combat.playerStatus),
-          playerStatusChange: combatStatusChangeText(playerState.combat.playerStatus, finalState.combat.playerStatus),
-          nextPhase: enemyTurn.details.nextPhase
-        }),
-        fallbackText: buildCombatFallbackText("enemy_turn_end", {
-          actorName: finalState.character.name,
-          targetName: finalState.combat.enemy || "对手",
-          actionLabel: enemyTurn.details.actionLabel,
-          hit: enemyTurn.details.hit,
-          critical: enemyTurn.details.critical,
-          damage: enemyTurn.details.damage,
-          statusChange: combatStatusChangeText(playerState.combat.enemyStatus, finalState.combat.enemyStatus)
-        })
-      });
-    }
 
     const narrationResults = await runCombatNarrationSequence(narrationSteps);
     const errorMessage = collectAiErrorMessage(narrationResults);
@@ -1780,10 +1639,10 @@ export function useGameSession() {
         ...outcome.state,
         messages: [
           ...outcome.state.messages,
+          ...narrationResults.map((result) => ({ id: uid("dm"), role: "dm" as const, text: result.text })),
           ...combatSummaryMessages,
           ...outcome.messages,
-          ...(errorMessage ? [{ id: uid("system"), role: "system" as const, text: errorMessage }] : []),
-          ...narrationResults.map((result) => ({ id: uid("dm"), role: "dm" as const, text: result.text }))
+          ...(errorMessage ? [{ id: uid("system"), role: "system" as const, text: errorMessage }] : [])
         ]
       };
     });
@@ -1902,12 +1761,56 @@ export function useGameSession() {
         text: buildEnemyTurnSummary(finalState.combat.enemy || "对手", enemyTurn.details)
       });
     }
-    const narrationSteps: CombatAiStep[] = [
-      {
+    const narrationSteps: CombatAiStep[] = [];
+    if (enemyTurn) {
+      narrationSteps.push({
+        state: finalState,
+        actionText: text,
+        prompt: buildCombatNarrationPrompt(finalState, {
+          stage: "turn_end",
+          actorName: playerState.character.name,
+          targetName: finalState.combat.enemy || playerState.combat.enemy || "对手",
+          round: finalState.combat.round || playerState.combat.round || 1,
+          locationName: currentLocationName(finalState),
+          sceneLabel: combatSceneLabels[finalState.sceneType],
+          actionText: text,
+          actionLabel: enemyTurn.details.actionLabel,
+          naturalRoll: enemyTurn.details.naturalRoll,
+          total: enemyTurn.details.total,
+          hit: enemyTurn.details.hit,
+          critical: enemyTurn.details.critical,
+          damage: enemyTurn.details.damage,
+          damageDice: enemyTurn.details.damageDice,
+          damageBonus: enemyTurn.details.damageBonus,
+          heroHpBefore: enemyTurn.details.heroHpBefore,
+          heroHpAfter: enemyTurn.details.heroHpAfter,
+          enemyHpBefore: enemyTurn.details.enemyHpBefore,
+          enemyHpAfter: enemyTurn.details.enemyHpAfter,
+          enemyStatusBefore: combatStatusLabels(playerState.combat.enemyStatus),
+          enemyStatusAfter: combatStatusLabels(finalState.combat.enemyStatus),
+          enemyStatusChange: combatStatusChangeText(playerState.combat.enemyStatus, finalState.combat.enemyStatus),
+          playerStatusBefore: combatStatusLabels(playerState.combat.playerStatus),
+          playerStatusAfter: combatStatusLabels(finalState.combat.playerStatus),
+          playerStatusChange: combatStatusChangeText(playerState.combat.playerStatus, finalState.combat.playerStatus),
+          enemyIntent: game.pendingCheck?.enemyIntent,
+          nextPhase: enemyTurn.details.nextPhase
+        }),
+        fallbackText: buildCombatFallbackText("turn_end", {
+          actorName: playerState.character.name,
+          targetName: finalState.combat.enemy || playerState.combat.enemy || "对手",
+          actionLabel: enemyTurn.details.actionLabel,
+          hit: enemyTurn.details.hit,
+          critical: enemyTurn.details.critical,
+          damage: enemyTurn.details.damage,
+          statusChange: combatStatusChangeText(playerState.combat.enemyStatus, finalState.combat.enemyStatus)
+        })
+      });
+    } else if (isEscapeCheck) {
+      narrationSteps.push({
         state: playerState,
         actionText: text,
         prompt: buildCombatNarrationPrompt(playerState, {
-          stage: isEscapeCheck ? "player_escape" : "player_check",
+          stage: "player_escape",
           actorName: playerState.character.name,
           targetName: actionState.combat.enemy || playerState.combat.enemy || "对手",
           round: playerState.combat.round || 1,
@@ -1934,81 +1837,12 @@ export function useGameSession() {
           enemyIntent: game.pendingCheck?.enemyIntent,
           nextPhase: playerState.combat.phase
         }),
-        fallbackText: buildCombatFallbackText(isEscapeCheck ? "player_escape" : "player_check", {
+        fallbackText: buildCombatFallbackText("player_escape", {
           actorName: playerState.character.name,
           targetName: actionState.combat.enemy || playerState.combat.enemy || "对手",
           actionLabel: hit.label,
           hit: hit.success,
           critical: Boolean(hit.isCritical)
-        })
-      }
-    ];
-
-    if (enemyTurn) {
-      narrationSteps.push({
-        state: playerState,
-        actionText: text,
-        prompt: buildCombatNarrationPrompt(playerState, {
-          stage: "enemy_turn_start",
-          actorName: playerState.combat.enemy || "对手",
-          targetName: playerState.character.name,
-          round: playerState.combat.round || 1,
-          locationName: currentLocationName(playerState),
-          sceneLabel: combatSceneLabels[playerState.sceneType],
-          actionText: text,
-          actionLabel: enemyTurn.details.actionLabel,
-          enemyIntent: game.pendingCheck?.enemyIntent,
-          heroHpBefore: enemyTurn.details.heroHpBefore,
-          heroHpAfter: enemyTurn.details.heroHpBefore,
-          enemyHpBefore: enemyTurn.details.enemyHpBefore,
-          enemyHpAfter: enemyTurn.details.enemyHpAfter,
-          nextPhase: enemyTurn.details.nextPhase
-        }),
-        fallbackText: buildCombatFallbackText("enemy_turn_start", {
-          actorName: playerState.character.name,
-          targetName: playerState.combat.enemy || "对手",
-          actionLabel: enemyTurn.details.actionLabel
-        })
-      });
-      narrationSteps.push({
-        state: finalState,
-        actionText: text,
-        prompt: buildCombatNarrationPrompt(finalState, {
-          stage: "enemy_turn_end",
-          actorName: finalState.combat.enemy || "对手",
-          targetName: finalState.character.name,
-          round: finalState.combat.round || 1,
-          locationName: currentLocationName(finalState),
-          sceneLabel: combatSceneLabels[finalState.sceneType],
-          actionText: text,
-          actionLabel: enemyTurn.details.actionLabel,
-          naturalRoll: enemyTurn.details.naturalRoll,
-          total: enemyTurn.details.total,
-          hit: enemyTurn.details.hit,
-          critical: enemyTurn.details.critical,
-          damage: enemyTurn.details.damage,
-          damageDice: enemyTurn.details.damageDice,
-          damageBonus: enemyTurn.details.damageBonus,
-          heroHpBefore: enemyTurn.details.heroHpBefore,
-          heroHpAfter: enemyTurn.details.heroHpAfter,
-          enemyHpBefore: enemyTurn.details.enemyHpBefore,
-          enemyHpAfter: enemyTurn.details.enemyHpAfter,
-          enemyStatusBefore: combatStatusLabels(playerState.combat.enemyStatus),
-          enemyStatusAfter: combatStatusLabels(finalState.combat.enemyStatus),
-          enemyStatusChange: combatStatusChangeText(playerState.combat.enemyStatus, finalState.combat.enemyStatus),
-          playerStatusBefore: combatStatusLabels(playerState.combat.playerStatus),
-          playerStatusAfter: combatStatusLabels(finalState.combat.playerStatus),
-          playerStatusChange: combatStatusChangeText(playerState.combat.playerStatus, finalState.combat.playerStatus),
-          nextPhase: enemyTurn.details.nextPhase
-        }),
-        fallbackText: buildCombatFallbackText("enemy_turn_end", {
-          actorName: finalState.character.name,
-          targetName: finalState.combat.enemy || "对手",
-          actionLabel: enemyTurn.details.actionLabel,
-          hit: enemyTurn.details.hit,
-          critical: enemyTurn.details.critical,
-          damage: enemyTurn.details.damage,
-          statusChange: combatStatusChangeText(playerState.combat.enemyStatus, finalState.combat.enemyStatus)
         })
       });
     }
@@ -2028,10 +1862,10 @@ export function useGameSession() {
         ...outcome.state,
         messages: [
           ...outcome.state.messages,
+          ...narrationResults.map((result) => ({ id: uid("dm"), role: "dm" as const, text: result.text })),
           ...combatSummaryMessages,
           ...outcome.messages,
-          ...(errorMessage ? [{ id: uid("system"), role: "system" as const, text: errorMessage }] : []),
-          ...narrationResults.map((result) => ({ id: uid("dm"), role: "dm" as const, text: result.text }))
+          ...(errorMessage ? [{ id: uid("system"), role: "system" as const, text: errorMessage }] : [])
         ]
       };
     });
