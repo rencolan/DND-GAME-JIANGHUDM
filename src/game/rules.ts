@@ -49,6 +49,10 @@ export function hasMartialTag(art: MartialArt | undefined, tag: NonNullable<Mart
 }
 
 export function martialTagLabels(art: MartialArt | undefined) {
+  return (art?.tags || []).map((tag) => martialTagLabel(tag));
+}
+
+export function martialTagLabel(tag: string) {
   const labels: Record<string, string> = {
     break: "破防",
     guard: "守势",
@@ -57,7 +61,44 @@ export function martialTagLabels(art: MartialArt | undefined) {
     recover: "回气",
     pierce: "穿防"
   };
-  return (art?.tags || []).map((tag) => labels[tag] || tag);
+  return labels[tag] || tag;
+}
+
+export function martialTagDescription(tag: string) {
+  const descriptions: Record<string, string> = {
+    break: "伤害结算后更容易让敌方露出破绽；高伤害本身也可能打出破绽。",
+    guard: "命中并结算伤害后，自己进入守势；敌方下次命中与伤害会被压低。",
+    injure: "提高内伤压力，更容易给目标叠加内伤。",
+    control: "命中并结算伤害后，使敌方受扰；敌方下一手命中会受到压制。",
+    recover: "命中并结算伤害后，回复少量真气。",
+    pierce: "攻击高护甲目标时更容易穿透防线，命中判定有额外帮助。"
+  };
+  return descriptions[tag] || "特殊效果会在命中或伤害结算时按本地规则生效。";
+}
+
+export function martialTagDetails(art: MartialArt | undefined) {
+  return (art?.tags || []).map((tag) => ({
+    tag,
+    label: martialTagLabel(tag),
+    description: martialTagDescription(tag)
+  }));
+}
+
+export function combatStatusLabel(status: string) {
+  const labels: Record<string, string> = {
+    exposed: "破绽",
+    controlled: "受扰",
+    guarded: "守势",
+    screened: "掩护",
+    poisoned: "中毒",
+    cold: "寒毒",
+    sealed: "封脉"
+  };
+  return labels[status] || status;
+}
+
+export function combatStatusLabels(statuses?: string[]) {
+  return (statuses || []).map((status) => combatStatusLabel(status));
 }
 
 export function internalStylePracticeThreshold(masteryLevel = 0) {

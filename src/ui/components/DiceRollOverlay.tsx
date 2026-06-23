@@ -155,6 +155,38 @@ export function DiceRollOverlay({ rolling, onComplete, sfxEnabled, sfxVolume }: 
     }
   }
 
+  async function ensureDiceBox() {
+    if (diceBoxRef.current) return diceBoxRef.current;
+
+    if (!initPromiseRef.current) {
+      initPromiseRef.current = (async () => {
+        const module = await import("@3d-dice/dice-box");
+        const DiceBoxClass = module.default;
+        const instance = new DiceBoxClass({
+          container: `#${DICE_BOX_CONTAINER_ID}`,
+          assetPath: "/assets/",
+          theme: DICE_THEME,
+          themeColor: DICE_THEME_COLOR,
+          preloadThemes: [DICE_THEME],
+          scale: 6.4,
+          lightIntensity: 1.15,
+          enableShadows: true,
+          offscreen: false
+        });
+        diceBoxRef.current = instance;
+        await instance.init();
+      })().catch((error) => {
+        diceBoxRef.current = null;
+        initPromiseRef.current = null;
+        throw error;
+      });
+    }
+
+    await initPromiseRef.current;
+    if (!diceBoxRef.current) throw new Error("Dice Box did not initialize.");
+    return diceBoxRef.current;
+  }
+
   async function playSound(kind: "roll" | "impact") {
     if (!sfxEnabled || sfxVolume <= 0) return;
 
@@ -171,6 +203,17 @@ export function DiceRollOverlay({ rolling, onComplete, sfxEnabled, sfxVolume }: 
       return;
     }
   }
+
+  useEffect(() => {
+    const prewarmTimer = window.setTimeout(() => {
+      ensureSfx();
+      void ensureDiceBox().catch((error) => {
+        console.warn("Dice Box preload failed; the next roll will use fallback if it still cannot initialize.", error);
+      });
+    }, 250);
+
+    return () => window.clearTimeout(prewarmTimer);
+  }, []);
 
   useEffect(() => {
     if (!rolling) {
@@ -220,37 +263,6 @@ export function DiceRollOverlay({ rolling, onComplete, sfxEnabled, sfxVolume }: 
         const fallbackResult = buildRollingResult(rolling, randomFaceResults(rolling.diceGroups), true);
         reveal(fallbackResult, "fallbackRevealed");
       }, FALLBACK_ROLL_MS);
-    };
-
-    const ensureDiceBox = async () => {
-      if (diceBoxRef.current) return diceBoxRef.current;
-
-      if (!initPromiseRef.current) {
-        initPromiseRef.current = (async () => {
-          const module = await import("@3d-dice/dice-box");
-          const DiceBoxClass = module.default;
-          const instance = new DiceBoxClass({
-            container: `#${DICE_BOX_CONTAINER_ID}`,
-            assetPath: "/assets/",
-            theme: DICE_THEME,
-            themeColor: DICE_THEME_COLOR,
-            scale: 6.4,
-            lightIntensity: 1.15,
-            enableShadows: true,
-            offscreen: false
-          });
-          diceBoxRef.current = instance;
-          await instance.init();
-        })().catch((error) => {
-          diceBoxRef.current = null;
-          initPromiseRef.current = null;
-          throw error;
-        });
-      }
-
-      await initPromiseRef.current;
-      if (!diceBoxRef.current) throw new Error("Dice Box did not initialize.");
-      return diceBoxRef.current;
     };
 
     settledRef.current = false;

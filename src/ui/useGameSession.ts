@@ -18,6 +18,7 @@ import {
   abilityModifier,
   abilityValue,
   calculateInnerInjuryPressure,
+  combatStatusLabels,
   hasMartialTag,
   internalStylePracticeThreshold,
   internalStyleRiskLevel,
@@ -100,6 +101,8 @@ type CombatAiStep = {
 
 type EnemyTurnSummaryDetails = {
   actionLabel: string;
+  damageDice?: string;
+  damageBonus?: number;
   naturalRoll: number;
   total: number;
   hit: boolean;
@@ -142,8 +145,12 @@ function buildCombatFallbackText(
     hit?: boolean;
     critical?: boolean;
     damage?: number;
+    statusChange?: string;
   }
 ) {
+  const statusSuffix = data.statusChange && data.statusChange !== "无"
+    ? `场上状态也随之一变：${data.statusChange}。`
+    : "";
   switch (stage) {
     case "player_check":
       return data.hit
@@ -156,15 +163,15 @@ function buildCombatFallbackText(
     case "player_hit_confirmed":
       return `${data.actorName}这一招${data.actionLabel || "攻击"}已经打实，${data.targetName}身形一震，场上气势也随之一偏。`;
     case "player_damage":
-      return data.damage
+      return (data.damage
         ? `${data.actorName}这一记${data.actionLabel || "重手"}结结实实落在${data.targetName}身上，劲力已经透了进去。`
-        : `${data.actorName}这一下虽已递出，余劲却还未真正压住${data.targetName}。`;
+        : `${data.actorName}这一下虽已递出，余劲却还未真正压住${data.targetName}。`) + statusSuffix;
     case "enemy_turn_start":
       return `${data.targetName}脚下不停，${data.actionLabel || "一招快手"}已然接上，气势直逼${data.actorName}胸前。`;
     case "enemy_turn_end":
-      return data.hit
+      return (data.hit
         ? `${data.targetName}这一手${data.actionLabel || "攻击"}终于打实${data.critical ? "，且来势更狠" : ""}，这一轮的落点已经分明。`
-        : `${data.targetName}这一手${data.actionLabel || "攻击"}来得虽急，却终究没能真正打实。`;
+        : `${data.targetName}这一手${data.actionLabel || "攻击"}来得虽急，却终究没能真正打实。`) + statusSuffix;
     default:
       return "战局又往前逼了一步。";
   }
@@ -208,12 +215,74 @@ function buildPlayerDamageSummary(enemyName: string, label: string, damageTotal:
   ]);
 }
 
+function combatStatusChangeText(before?: string[], after?: string[]) {
+  const beforeSet = new Set(before || []);
+  const afterSet = new Set(after || []);
+  const added = [...afterSet].filter((status) => !beforeSet.has(status));
+  const removed = [...beforeSet].filter((status) => !afterSet.has(status));
+  const parts = [
+    added.length ? `新增 ${combatStatusLabels(added).join("、")}` : undefined,
+    removed.length ? `解除 ${combatStatusLabels(removed).join("、")}` : undefined
+  ].filter(Boolean);
+  return parts.length ? parts.join("；") : "无";
+}
+
 function resolvePendingRollMode(check?: PendingCheck) {
   return check?.rollMode || "normal";
 }
 
 function isEscapePendingCheck(check?: PendingCheck) {
   return check?.kind === "combat_escape";
+}
+
+const END_TURN_ACTION_KEYWORDS = [
+  "结束回合",
+  "结束这一回合",
+  "回合结束",
+  "等待",
+  "观望",
+  "按兵不动",
+  "暂不出手",
+  "不出手",
+  "收招",
+  "停手"
+];
+
+const DEFENSIVE_END_TURN_ACTION_KEYWORDS = [
+  "防守",
+  "守住",
+  "守势",
+  "架住",
+  "格挡",
+  "招架",
+  "护住",
+  "后撤守住"
+];
+
+const ACTIVE_COMBAT_ACTION_KEYWORDS = [
+  "攻击",
+  "打",
+  "击",
+  "刺",
+  "劈",
+  "砍",
+  "踢",
+  "撞",
+  "压上",
+  "追击",
+  "反击",
+  "出招",
+  "递招"
+];
+
+function isDefensiveEndTurnCombatAction(text: string) {
+  return includesAny(text, DEFENSIVE_END_TURN_ACTION_KEYWORDS);
+}
+
+function isEndTurnCombatAction(text: string) {
+  if (isDefensiveEndTurnCombatAction(text)) return true;
+  if (!includesAny(text, END_TURN_ACTION_KEYWORDS)) return false;
+  return !includesAny(text, ACTIVE_COMBAT_ACTION_KEYWORDS);
 }
 
 function isTutorialGame(state: GameState) {
@@ -907,6 +976,120 @@ export function useGameSession() {
     return message ? `API 调用失败，已切回本地战斗播报：${message}` : undefined;
   }
 
+  async function runAutomaticEnemyTurn(
+    actionState: GameState,
+    actionText: string,
+    options: {
+      playerPatch?: GamePatch;
+      playerSummary?: string;
+      advanceRound?: boolean;
+    } = {}
+  ) {
+    const playerState = options.playerPatch
+      ? applyPatchToState(actionState, options.playerPatch)
+      : actionState;
+    const enemyTurn = resolveEnemyTurn(normalizeGameState(playerState), options.advanceRound ?? true);
+    const finalState = applyPatchToState(playerState, enemyTurn.patch);
+    const enemyName = playerState.combat.enemy || finalState.combat.enemy || "对手";
+    const enemyStatusBefore = combatStatusLabels(playerState.combat.enemyStatus);
+    const enemyStatusAfter = combatStatusLabels(finalState.combat.enemyStatus);
+    const playerStatusBefore = combatStatusLabels(playerState.combat.playerStatus);
+    const playerStatusAfter = combatStatusLabels(finalState.combat.playerStatus);
+    const narrationSteps: CombatAiStep[] = [
+      {
+        state: playerState,
+        actionText,
+        prompt: buildCombatNarrationPrompt(playerState, {
+          stage: "enemy_turn_start",
+          actorName: enemyName,
+          targetName: playerState.character.name,
+          round: playerState.combat.round || 1,
+          locationName: currentLocationName(playerState),
+          sceneLabel: combatSceneLabels[playerState.sceneType],
+          actionText,
+          actionLabel: enemyTurn.details.actionLabel,
+          enemyIntent: playerState.pendingCheck?.enemyIntent || playerState.combat.enemyIntent,
+          heroHpBefore: enemyTurn.details.heroHpBefore,
+          heroHpAfter: enemyTurn.details.heroHpBefore,
+          enemyHpBefore: enemyTurn.details.enemyHpBefore,
+          enemyHpAfter: enemyTurn.details.enemyHpAfter,
+          nextPhase: enemyTurn.details.nextPhase
+        }),
+        fallbackText: buildCombatFallbackText("enemy_turn_start", {
+          actorName: playerState.character.name,
+          targetName: enemyName,
+          actionLabel: enemyTurn.details.actionLabel
+        })
+      },
+      {
+        state: finalState,
+        actionText,
+        prompt: buildCombatNarrationPrompt(finalState, {
+          stage: "enemy_turn_end",
+          actorName: enemyName,
+          targetName: finalState.character.name,
+          round: finalState.combat.round || playerState.combat.round || 1,
+          locationName: currentLocationName(finalState),
+          sceneLabel: combatSceneLabels[finalState.sceneType],
+          actionText,
+          actionLabel: enemyTurn.details.actionLabel,
+          naturalRoll: enemyTurn.details.naturalRoll,
+          total: enemyTurn.details.total,
+          hit: enemyTurn.details.hit,
+          critical: enemyTurn.details.critical,
+          damage: enemyTurn.details.damage,
+          damageDice: enemyTurn.details.damageDice,
+          damageBonus: enemyTurn.details.damageBonus,
+          heroHpBefore: enemyTurn.details.heroHpBefore,
+          heroHpAfter: enemyTurn.details.heroHpAfter,
+          enemyHpBefore: enemyTurn.details.enemyHpBefore,
+          enemyHpAfter: enemyTurn.details.enemyHpAfter,
+          enemyStatusBefore,
+          enemyStatusAfter,
+          enemyStatusChange: combatStatusChangeText(playerState.combat.enemyStatus, finalState.combat.enemyStatus),
+          playerStatusBefore,
+          playerStatusAfter,
+          playerStatusChange: combatStatusChangeText(playerState.combat.playerStatus, finalState.combat.playerStatus),
+          nextPhase: enemyTurn.details.nextPhase
+        }),
+        fallbackText: buildCombatFallbackText("enemy_turn_end", {
+          actorName: finalState.character.name,
+          targetName: enemyName,
+          actionLabel: enemyTurn.details.actionLabel,
+          hit: enemyTurn.details.hit,
+          critical: enemyTurn.details.critical,
+          damage: enemyTurn.details.damage,
+          statusChange: combatStatusChangeText(playerState.combat.enemyStatus, finalState.combat.enemyStatus)
+        })
+      }
+    ];
+    const narrationResults = await runCombatNarrationSequence(narrationSteps);
+    const errorMessage = collectAiErrorMessage(narrationResults);
+
+    setGame((prev) => {
+      let patched = prev;
+      if (options.playerPatch) {
+        patched = applyPatchToState(patched, options.playerPatch);
+      }
+      patched = applyPatchToState(patched, enemyTurn.patch);
+      for (const result of narrationResults) {
+        patched = applyPatchToState(patched, result.patch);
+      }
+      const outcome = applyFormalActionFollowups(actionState, patched, actionText);
+      return {
+        ...outcome.state,
+        messages: [
+          ...outcome.state.messages,
+          ...(options.playerSummary ? [{ id: uid("system"), role: "system" as const, text: options.playerSummary }] : []),
+          { id: uid("system"), role: "system" as const, text: buildEnemyTurnSummary(enemyName, enemyTurn.details) },
+          ...outcome.messages,
+          ...(errorMessage ? [{ id: uid("system"), role: "system" as const, text: errorMessage }] : []),
+          ...narrationResults.map((result) => ({ id: uid("dm"), role: "dm" as const, text: result.text }))
+        ]
+      };
+    });
+  }
+
   async function promptCombatEscapeCheck(actionState: GameState, text: string) {
     const fallbackCheck = buildCombatEscapeCheck(actionState, text);
     if (!fallbackCheck) return;
@@ -1046,6 +1229,7 @@ export function useGameSession() {
     };
     const globalUpdateDue = baseGame.actionCount % WORLD_STEP === 0;
     const wantsEscape = baseGame.combat.active && isEscapeCombatAction(text);
+    const wantsEndTurn = baseGame.combat.active && !wantsEscape && isEndTurnCombatAction(text);
 
     setGame(baseGame);
 
@@ -1114,6 +1298,95 @@ export function useGameSession() {
             id: uid("dm"),
             role: "dm",
             text: "敌方这一手还没结完，现在不能抢先脱战。等敌方回合结束后，再尝试逃跑。"
+          }
+        ]
+      }));
+      closePanels();
+      setBusy(false);
+      return;
+    }
+
+    if (wantsEndTurn && baseGame.combat.phase === "opening") {
+      setGame((prev) => ({
+        ...prev,
+        messages: [
+          ...prev.messages,
+          {
+            id: uid("dm"),
+            role: "dm",
+            text: "先攻还没分出来，眼下还不能直接结束回合。请先点开“待先攻”，把先攻判定掷完。"
+          }
+        ]
+      }));
+      closePanels();
+      setBusy(false);
+      return;
+    }
+
+    if (wantsEndTurn && baseGame.combat.phase === "awaiting_hit_check") {
+      if (isEscapePendingCheck(baseGame.pendingCheck)) {
+        setGame((prev) => ({
+          ...prev,
+          messages: [
+            ...prev.messages,
+            {
+              id: uid("dm"),
+              role: "dm",
+              text: "你已经在尝试脱身了。请点开“待逃脱”，先把这次逃跑判定掷完。"
+            }
+          ]
+        }));
+        closePanels();
+        setBusy(false);
+        return;
+      }
+
+      const defensive = isDefensiveEndTurnCombatAction(text);
+      await runAutomaticEnemyTurn(baseGame, text, {
+        playerPatch: defensive
+          ? {
+            pendingCheck: undefined,
+            combatUpdate: {
+              playerStatusAdd: ["guarded"],
+              lastCombatEvent: `${baseGame.character.name}转入守势`
+            }
+          }
+          : { pendingCheck: undefined },
+        playerSummary: defensive
+          ? "【回合结束】你收住出手，转入守势；敌方立刻接续行动。"
+          : "【回合结束】你让过这一手，敌方立刻接续行动。"
+      });
+      closePanels();
+      setBusy(false);
+      return;
+    }
+
+    if (wantsEndTurn && baseGame.combat.phase === "awaiting_damage_roll") {
+      setGame((prev) => ({
+        ...prev,
+        messages: [
+          ...prev.messages,
+          {
+            id: uid("dm"),
+            role: "dm",
+            text: "这一轮已经打到伤害结算了，先把当前伤害掷完；伤害结算后，敌方回合会自动进行。"
+          }
+        ]
+      }));
+      closePanels();
+      setBusy(false);
+      return;
+    }
+
+    if (wantsEndTurn && baseGame.combat.phase === "resolving_enemy_response") {
+      setGame((prev) => ({
+        ...prev,
+        messages: [
+          ...prev.messages,
+          {
+            id: uid("dm"),
+            role: "dm",
+            text: "敌方这一手还没结完，现在不能再结束一次回合。等敌方回合结束后，再决定下一步。"
           }
         ]
       }));
@@ -1357,6 +1630,10 @@ export function useGameSession() {
       ? applyPatchToState(actionState, withSceneFallback(localCombatResolution.result.combatFlow.playerPatch, localCombatResolution.text, combinedText))
       : finalState;
     const enemyTurn = localCombatResolution.result.combatFlow?.enemyTurn;
+    const playerDamageEnemyStatusBefore = combatStatusLabels(actionState.combat.enemyStatus);
+    const playerDamageEnemyStatusAfter = combatStatusLabels(playerState.combat.enemyStatus);
+    const playerDamagePlayerStatusBefore = combatStatusLabels(actionState.combat.playerStatus);
+    const playerDamagePlayerStatusAfter = combatStatusLabels(playerState.combat.playerStatus);
     const combatSummaryMessages: Message[] = [
       {
         id: uid("system"),
@@ -1402,6 +1679,12 @@ export function useGameSession() {
           heroHpAfter: playerState.character.hp,
           enemyHpBefore: actionState.combat.enemyHp,
           enemyHpAfter: playerState.combat.enemyHp,
+          enemyStatusBefore: playerDamageEnemyStatusBefore,
+          enemyStatusAfter: playerDamageEnemyStatusAfter,
+          enemyStatusChange: combatStatusChangeText(actionState.combat.enemyStatus, playerState.combat.enemyStatus),
+          playerStatusBefore: playerDamagePlayerStatusBefore,
+          playerStatusAfter: playerDamagePlayerStatusAfter,
+          playerStatusChange: combatStatusChangeText(actionState.combat.playerStatus, playerState.combat.playerStatus),
           nextPhase: playerState.combat.phase
         }),
         fallbackText: buildCombatFallbackText("player_damage", {
@@ -1409,7 +1692,8 @@ export function useGameSession() {
           targetName: playerState.combat.enemy || "对手",
           actionLabel: pendingDamage.label,
           damage: damage.total,
-          critical: Boolean(pendingDamage.isCritical)
+          critical: Boolean(pendingDamage.isCritical),
+          statusChange: combatStatusChangeText(actionState.combat.enemyStatus, playerState.combat.enemyStatus)
         })
       }
     ];
@@ -1463,6 +1747,12 @@ export function useGameSession() {
           heroHpAfter: enemyTurn.details.heroHpAfter,
           enemyHpBefore: enemyTurn.details.enemyHpBefore,
           enemyHpAfter: enemyTurn.details.enemyHpAfter,
+          enemyStatusBefore: combatStatusLabels(playerState.combat.enemyStatus),
+          enemyStatusAfter: combatStatusLabels(finalState.combat.enemyStatus),
+          enemyStatusChange: combatStatusChangeText(playerState.combat.enemyStatus, finalState.combat.enemyStatus),
+          playerStatusBefore: combatStatusLabels(playerState.combat.playerStatus),
+          playerStatusAfter: combatStatusLabels(finalState.combat.playerStatus),
+          playerStatusChange: combatStatusChangeText(playerState.combat.playerStatus, finalState.combat.playerStatus),
           nextPhase: enemyTurn.details.nextPhase
         }),
         fallbackText: buildCombatFallbackText("enemy_turn_end", {
@@ -1471,7 +1761,8 @@ export function useGameSession() {
           actionLabel: enemyTurn.details.actionLabel,
           hit: enemyTurn.details.hit,
           critical: enemyTurn.details.critical,
-          damage: enemyTurn.details.damage
+          damage: enemyTurn.details.damage,
+          statusChange: combatStatusChangeText(playerState.combat.enemyStatus, finalState.combat.enemyStatus)
         })
       });
     }
@@ -1634,6 +1925,12 @@ export function useGameSession() {
           heroHpAfter: playerState.character.hp,
           enemyHpBefore: actionState.combat.enemyHp,
           enemyHpAfter: playerState.combat.enemyHp,
+          enemyStatusBefore: combatStatusLabels(actionState.combat.enemyStatus),
+          enemyStatusAfter: combatStatusLabels(playerState.combat.enemyStatus),
+          enemyStatusChange: combatStatusChangeText(actionState.combat.enemyStatus, playerState.combat.enemyStatus),
+          playerStatusBefore: combatStatusLabels(actionState.combat.playerStatus),
+          playerStatusAfter: combatStatusLabels(playerState.combat.playerStatus),
+          playerStatusChange: combatStatusChangeText(actionState.combat.playerStatus, playerState.combat.playerStatus),
           enemyIntent: game.pendingCheck?.enemyIntent,
           nextPhase: playerState.combat.phase
         }),
@@ -1696,6 +1993,12 @@ export function useGameSession() {
           heroHpAfter: enemyTurn.details.heroHpAfter,
           enemyHpBefore: enemyTurn.details.enemyHpBefore,
           enemyHpAfter: enemyTurn.details.enemyHpAfter,
+          enemyStatusBefore: combatStatusLabels(playerState.combat.enemyStatus),
+          enemyStatusAfter: combatStatusLabels(finalState.combat.enemyStatus),
+          enemyStatusChange: combatStatusChangeText(playerState.combat.enemyStatus, finalState.combat.enemyStatus),
+          playerStatusBefore: combatStatusLabels(playerState.combat.playerStatus),
+          playerStatusAfter: combatStatusLabels(finalState.combat.playerStatus),
+          playerStatusChange: combatStatusChangeText(playerState.combat.playerStatus, finalState.combat.playerStatus),
           nextPhase: enemyTurn.details.nextPhase
         }),
         fallbackText: buildCombatFallbackText("enemy_turn_end", {
@@ -1704,7 +2007,8 @@ export function useGameSession() {
           actionLabel: enemyTurn.details.actionLabel,
           hit: enemyTurn.details.hit,
           critical: enemyTurn.details.critical,
-          damage: enemyTurn.details.damage
+          damage: enemyTurn.details.damage,
+          statusChange: combatStatusChangeText(playerState.combat.enemyStatus, finalState.combat.enemyStatus)
         })
       });
     }
@@ -1861,53 +2165,57 @@ export function useGameSession() {
     void submitAction(`前往【${name}】`);
   }
 
-  function useItem(item: Item) {
-    setGame((prev) => {
-      const next = structuredClone(prev);
-      const target = next.character.inventory.find((entry) => entry.id === item.id);
-      if (!target) return prev;
+  async function useItem(item: Item) {
+    if (uiLocked || rolling || busy) return;
 
-      const hpBefore = next.character.hp;
-      const qiBefore = next.character.qi;
-      const innerBefore = next.innerInjury || 0;
-      if (target.hpRestore) next.character.hp = clamp(next.character.hp + target.hpRestore, 0, next.character.maxHp);
-      if (target.qiRestore) next.character.qi = clamp(next.character.qi + target.qiRestore, 0, next.character.maxQi);
-      if (target.innerInjuryRestore) next.innerInjury = clamp((next.innerInjury || 0) - target.innerInjuryRestore, 0, 100);
-      if (target.grantsStatus?.length && next.combat.active) {
-        const statuses = new Set(next.combat.playerStatus || []);
-        target.grantsStatus.forEach((status) => statuses.add(status));
-        next.combat.playerStatus = [...statuses];
-      }
-      if (target.curesStatus?.length && next.combat.active) {
-        const cures = new Set(target.curesStatus);
-        next.combat.playerStatus = (next.combat.playerStatus || []).filter((status) => !cures.has(status));
-      }
-      target.count -= 1;
-      next.character.inventory = next.character.inventory.filter((entry) => entry.count > 0);
-      next.systemLog.push(`使用：${item.name}`);
-      const summary = [
-        `【使用物品】${item.name}`,
-        ...(next.character.hp !== hpBefore ? [`HP：${hpBefore} → ${next.character.hp}`] : []),
-        ...(next.character.qi !== qiBefore ? [`Qi：${qiBefore} → ${next.character.qi}`] : []),
-        ...((next.innerInjury || 0) !== innerBefore ? [`内伤：${innerBefore} → ${next.innerInjury || 0}`] : []),
-        ...(target.grantsStatus?.length && next.combat.active ? [`获得状态：${target.grantsStatus.join("、")}`] : []),
-        ...(target.curesStatus?.length && next.combat.active ? [`解除状态：${target.curesStatus.join("、")}`] : []),
-        ...(next.combat.active && target.combatActionCost !== 0 ? ["战斗中使用物品消耗这一手，敌人会接续出招。"] : [])
-      ].join("\n");
-      next.messages.push({ id: uid("system"), role: "system", text: summary });
+    const next = structuredClone(game);
+    const target = next.character.inventory.find((entry) => entry.id === item.id);
+    if (!target) return;
 
-      if (!next.combat.active || target.combatActionCost === 0) return normalizeGameState(next);
+    const hpBefore = next.character.hp;
+    const qiBefore = next.character.qi;
+    const innerBefore = next.innerInjury || 0;
+    if (target.hpRestore) next.character.hp = clamp(next.character.hp + target.hpRestore, 0, next.character.maxHp);
+    if (target.qiRestore) next.character.qi = clamp(next.character.qi + target.qiRestore, 0, next.character.maxQi);
+    if (target.innerInjuryRestore) next.innerInjury = clamp((next.innerInjury || 0) - target.innerInjuryRestore, 0, 100);
+    if (target.grantsStatus?.length && next.combat.active) {
+      const statuses = new Set(next.combat.playerStatus || []);
+      target.grantsStatus.forEach((status) => statuses.add(status));
+      next.combat.playerStatus = [...statuses];
+    }
+    if (target.curesStatus?.length && next.combat.active) {
+      const cures = new Set(target.curesStatus);
+      next.combat.playerStatus = (next.combat.playerStatus || []).filter((status) => !cures.has(status));
+    }
+    target.count -= 1;
+    next.character.inventory = next.character.inventory.filter((entry) => entry.count > 0);
+    next.systemLog.push(`使用：${item.name}`);
+    const summary = [
+      `【使用物品】${item.name}`,
+      ...(next.character.hp !== hpBefore ? [`HP：${hpBefore} → ${next.character.hp}`] : []),
+      ...(next.character.qi !== qiBefore ? [`Qi：${qiBefore} → ${next.character.qi}`] : []),
+      ...((next.innerInjury || 0) !== innerBefore ? [`内伤：${innerBefore} → ${next.innerInjury || 0}`] : []),
+      ...(target.grantsStatus?.length && next.combat.active ? [`获得状态：${target.grantsStatus.join("、")}`] : []),
+      ...(target.curesStatus?.length && next.combat.active ? [`解除状态：${target.curesStatus.join("、")}`] : []),
+      ...(next.combat.active && target.combatActionCost !== 0 ? ["战斗中使用物品消耗这一手，敌人会接续出招。"] : [])
+    ].join("\n");
+    next.messages.push({ id: uid("system"), role: "system", text: summary });
 
-      const enemyTurn = resolveEnemyTurn(normalizeGameState(next));
-      const afterEnemy = applyPatchToState(next, enemyTurn.patch);
-      return {
-        ...afterEnemy,
-        messages: [
-          ...afterEnemy.messages,
-          { id: uid("system"), role: "system", text: buildEnemyTurnSummary(afterEnemy.combat.enemy || next.combat.enemy || "敌人", enemyTurn.details) }
-        ]
-      };
-    });
+    const actionState = normalizeGameState(next);
+    if (!actionState.combat.active || target.combatActionCost === 0) {
+      setGame(actionState);
+      return;
+    }
+
+    setBusy(true);
+    closePanels();
+    setGame(actionState);
+    try {
+      await runAutomaticEnemyTurn(actionState, `使用${item.name}`);
+    } finally {
+      closePanels();
+      setBusy(false);
+    }
   }
 
   function studyManual(itemId: string) {

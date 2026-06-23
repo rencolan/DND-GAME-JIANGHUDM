@@ -393,14 +393,12 @@ export function GameScreen({ session }: GameScreenProps) {
         </section>
       )}
 
-      {session.rolling && (
-        <DiceRollOverlay
-          rolling={session.rolling}
-          onComplete={completeRolling}
-          sfxEnabled={sfxEnabled}
-          sfxVolume={sfxVolume}
-        />
-      )}
+      <DiceRollOverlay
+        rolling={session.rolling}
+        onComplete={completeRolling}
+        sfxEnabled={sfxEnabled}
+        sfxVolume={sfxVolume}
+      />
 
       <DicePanel
         diceOpen={diceOpen}

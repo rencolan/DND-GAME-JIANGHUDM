@@ -1,4 +1,5 @@
 import type { GameState, Item } from "../../types";
+import { martialTagDetails } from "../../game/rules";
 
 type InventoryTabProps = {
   game: GameState;
@@ -67,32 +68,47 @@ export function InventoryTab({
 
       <section className="martial-list">
         <h3>武学</h3>
-        {game.character.martialArts.map((art) => (
-          <article key={art.id}>
-            <button
-              type="button"
-              className="martial-detail-toggle"
-              onClick={() => setSelectedInventoryMartialId((current) => current === art.id ? undefined : art.id)}
-            >
-              <div>
-                <b>{art.name}</b>
-                <span>{art.category === "internal" ? "内功" : "外功"}</span>
-              </div>
-              <small>{art.damageDice}{art.damageBonus ? ` +${art.damageBonus}` : ""}</small>
-            </button>
+        {game.character.martialArts.map((art) => {
+          const tagDetails = martialTagDetails(art);
+          return (
+            <article key={art.id}>
+              <button
+                type="button"
+                className="martial-detail-toggle"
+                onClick={() => setSelectedInventoryMartialId((current) => current === art.id ? undefined : art.id)}
+              >
+                <div>
+                  <b>{art.name}</b>
+                  <span>{art.category === "internal" ? "内功" : "外功"}</span>
+                </div>
+                <small>{art.damageDice}{art.damageBonus ? ` +${art.damageBonus}` : ""}</small>
+              </button>
 
-            {selectedInventoryMartial?.id === art.id && (
-              <div className="martial-detail-card">
-                <small>类别：{art.category === "internal" ? "内功" : "外功"}</small>
-                <small>等级：{art.grade}</small>
-                <small>来源：{art.source}</small>
-                <small>对应属性：{art.linkedAbility.toUpperCase()}</small>
-                <small>伤害：{art.damageDice}{art.damageBonus ? ` +${art.damageBonus}` : ""}</small>
-                <small>耗气：{art.category === "internal" ? art.baseQiCost : 0}</small>
-              </div>
-            )}
-          </article>
-        ))}
+              {selectedInventoryMartial?.id === art.id && (
+                <div className="martial-detail-card">
+                  <small>类别：{art.category === "internal" ? "内功" : "外功"}</small>
+                  <small>等级：{art.grade}</small>
+                  <small>来源：{art.source}</small>
+                  <small>对应属性：{art.linkedAbility.toUpperCase()}</small>
+                  <small>伤害：{art.damageDice}{art.damageBonus ? ` +${art.damageBonus}` : ""}</small>
+                  <small>耗气：{art.category === "internal" ? art.baseQiCost : 0}</small>
+                  {art.effectText && <small>招式说明：{art.effectText}</small>}
+                  {tagDetails.length > 0 ? (
+                    <div className="martial-effect-list">
+                      {tagDetails.map((detail) => (
+                        <small key={detail.tag}>
+                          {detail.label}：{detail.description}
+                        </small>
+                      ))}
+                    </div>
+                  ) : (
+                    <small>特殊效果：无，按基础命中与伤害结算。</small>
+                  )}
+                </div>
+              )}
+            </article>
+          );
+        })}
       </section>
     </div>
   );

@@ -23,6 +23,12 @@ export type CombatNarrationContext = {
   heroHpAfter?: number;
   enemyHpBefore?: number;
   enemyHpAfter?: number;
+  enemyStatusBefore?: string[];
+  enemyStatusAfter?: string[];
+  enemyStatusChange?: string;
+  playerStatusBefore?: string[];
+  playerStatusAfter?: string[];
+  playerStatusChange?: string;
   enemyIntent?: string;
   nextPhase?: string;
 };
@@ -226,6 +232,10 @@ d20: ${context.naturalRoll ?? "未提供"}
 固定伤害加值: ${context.damageBonus ?? "未提供"}
 主角 HP: ${context.heroHpBefore ?? "未提供"} -> ${context.heroHpAfter ?? "未提供"}
 敌人 HP: ${context.enemyHpBefore ?? "未提供"} -> ${context.enemyHpAfter ?? "未提供"}
+敌方状态变化: ${context.enemyStatusChange || "无"}
+敌方状态: ${context.enemyStatusBefore?.join("、") || "无"} -> ${context.enemyStatusAfter?.join("、") || "无"}
+玩家状态变化: ${context.playerStatusChange || "无"}
+玩家状态: ${context.playerStatusBefore?.join("、") || "无"} -> ${context.playerStatusAfter?.join("、") || "无"}
 敌方意图: ${context.enemyIntent || "未提供"}
 后续阶段: ${context.nextPhase || state.combat.phase || "未提供"}
 
@@ -233,6 +243,7 @@ d20: ${context.naturalRoll ?? "未提供"}
 - 如果“是否成功/命中”为否，就不能写成打实。
 - 如果“是否暴击”为是，可以写势头更狠，但不要改动伤害事实。
 - 如果阶段是“敌方回合起手”，不要提前写命中和掉血结果。
+- 如果敌方状态变化不是“无”，必须用外在动作或架势写出这些状态变化，例如破绽、受扰、守势、内息被扰等。
 - 不要替系统推进状态，不要发明新的判定要求。${enemyTurnStage ? "\n- 当前是敌方回合播报，只能写敌方动作、局面变化，以及玩家外在可见的结果。" : ""}
 
 \`\`\`json

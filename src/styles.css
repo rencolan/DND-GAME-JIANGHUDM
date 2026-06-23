@@ -1883,6 +1883,13 @@ button {
   line-height: 1.4;
 }
 
+.martial-effect-list {
+  display: grid;
+  gap: 4px;
+  padding-top: 4px;
+  border-top: 1px solid rgba(242, 212, 141, .18);
+}
+
 .roster-strip {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
