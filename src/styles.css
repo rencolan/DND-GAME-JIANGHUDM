@@ -3029,7 +3029,7 @@ button {
 
 .allocator-controls {
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: 1fr auto;
   align-items: center;
   gap: 8px;
 }
@@ -3042,10 +3042,20 @@ button {
   white-space: nowrap;
 }
 
-.allocator-controls button {
+.allocator-controls .ability-roll-button {
   width: 34px;
   height: 34px;
   border-radius: 8px;
+  border: 1px solid rgba(242, 212, 141, .32);
+  background: rgba(242, 212, 141, .1);
+  color: var(--gold-2);
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.allocator-controls .ability-roll-button:disabled {
+  opacity: .55;
 }
 
 .secondary-action {
@@ -3252,8 +3262,8 @@ button {
 }
 
 .roll-overlay {
-  position: absolute;
-  z-index: 70;
+  position: fixed;
+  z-index: 1000;
   inset: 0;
   display: grid;
   place-items: center;

@@ -12,7 +12,8 @@ type SetupScreenProps = {
   setCustomName: (value: string) => void;
   selectedOrigin: OriginTemplate;
   abilityChoices: RollPackage[];
-  onRollAbilities: () => void;
+  rollingActive?: boolean;
+  onRollAbility: (index: number) => void;
   onStart: () => void;
   onContinue?: () => void;
 };
@@ -28,20 +29,24 @@ export function SetupScreen({
   setCustomName,
   selectedOrigin,
   abilityChoices,
-  onRollAbilities,
+  rollingActive,
+  onRollAbility,
   onStart,
   onContinue
 }: SetupScreenProps) {
   const baseChoice = abilityChoices[0] || ([0, 0, 0, 0, 0, 0] as RollPackage);
   const finalChoice = baseChoice;
+  const abilitiesRolled = finalChoice.every((score) => score > 0);
   const startingArt = selectedOrigin.martialArts[0];
-  const previewStats = {
-    hp: calculateHpFromCon(finalChoice[2]),
-    ac: calculateAcFromDex(finalChoice[1]),
-    qi: calculateMaxQi(selectedOrigin.qiStart, finalChoice[5]),
-    extBonus: Math.max(0, abilityMod(finalChoice[0])),
-    intBonus: Math.max(0, abilityMod(finalChoice[5]))
-  };
+  const previewStats = abilitiesRolled
+    ? {
+      hp: calculateHpFromCon(finalChoice[2]),
+      ac: calculateAcFromDex(finalChoice[1]),
+      qi: calculateMaxQi(selectedOrigin.qiStart, finalChoice[5]),
+      extBonus: Math.max(0, abilityMod(finalChoice[0])),
+      intBonus: Math.max(0, abilityMod(finalChoice[5]))
+    }
+    : undefined;
 
   return (
     <section className="setup-screen">
@@ -108,11 +113,11 @@ export function SetupScreen({
             </p>
 
             <div className="setup-build-summary">
-              <span>生命 {previewStats.hp}</span>
-              <span>护甲 {previewStats.ac}</span>
-              <span>内力 {previewStats.qi}</span>
-              <span>外功 +{previewStats.extBonus}</span>
-              <span>内功 +{previewStats.intBonus}</span>
+              <span>生命 {previewStats?.hp ?? "待投"}</span>
+              <span>护甲 {previewStats?.ac ?? "待投"}</span>
+              <span>内力 {previewStats?.qi ?? "待投"}</span>
+              <span>外功 {previewStats ? `+${previewStats.extBonus}` : "待投"}</span>
+              <span>内功 {previewStats ? `+${previewStats.intBonus}` : "待投"}</span>
               <span>{startingArt?.name || "江湖刀路"}</span>
             </div>
 
@@ -120,20 +125,28 @@ export function SetupScreen({
               {abilityOrder.map((key, index) => (
                 <article key={key}>
                   <div className="allocator-controls">
-                    <strong>{abilityLabels[key]} {finalChoice[index]}</strong>
+                    <strong>{abilityLabels[key]} {finalChoice[index] || "待投"}</strong>
+                    <button
+                      className="ability-roll-button"
+                      type="button"
+                      onClick={() => onRollAbility(index)}
+                      disabled={rollingActive}
+                    >
+                      {finalChoice[index] ? "重投" : "投掷"}
+                    </button>
                   </div>
 
                   <div className="allocator-meta">
                     <small>4d6 去最低 · {abilityEffectLabels[key]}</small>
-                    <span>修正 {abilityMod(finalChoice[index]) >= 0 ? "+" : ""}{abilityMod(finalChoice[index])}</span>
+                    <span>
+                      {finalChoice[index]
+                        ? `修正 ${abilityMod(finalChoice[index]) >= 0 ? "+" : ""}${abilityMod(finalChoice[index])}`
+                        : "等待投掷"}
+                    </span>
                   </div>
                 </article>
               ))}
             </div>
-
-            <button className="secondary-action" type="button" onClick={onRollAbilities}>
-              重新投掷六项属性
-            </button>
           </article>
         </section>
 
@@ -156,7 +169,7 @@ export function SetupScreen({
           </div>
         </section>
 
-        <button className="primary-action" type="button" onClick={onStart}>
+        <button className="primary-action" type="button" onClick={onStart} disabled={rollingActive || !abilitiesRolled}>
           以此命数入局
         </button>
       </div>

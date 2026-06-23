@@ -72,7 +72,6 @@ import {
   advanceTime,
   clamp,
   defaultApiConfig,
-  makeAbilityChoices,
   normalizeApiConfig,
   readJson
 } from "./sessionShared";
@@ -295,9 +294,15 @@ function isTutorialCombatGame(state: GameState) {
   return isNamelessTutorialCombatStage(state);
 }
 
-function makeSingleAbilityChoice() {
-  return [makeAbilityChoices()[0]];
+function makeEmptyAbilityChoice() {
+  return [[0, 0, 0, 0, 0, 0] as RollPackage];
 }
+
+function isCompleteAbilityChoice(choice?: RollPackage) {
+  return Boolean(choice?.every((score) => score > 0));
+}
+
+const CREATION_ABILITY_LABELS = ["筋骨", "身法", "根骨", "悟性", "气度", "心境"] as const;
 
 function qiInvestBonus(qi: number) {
   return Math.floor(qi / 2);
@@ -419,7 +424,7 @@ export function useGameSession() {
   const [api, setApi] = useState<ApiConfig>(() => normalizeApiConfig(initialApi));
   const [customName, setCustomName] = useState("无名客");
   const [selectedOriginId, setSelectedOriginId] = useState(PLAYABLE_ORIGIN_ID);
-  const [abilityChoices, setAbilityChoices] = useState<RollPackage[]>(() => makeSingleAbilityChoice());
+  const [abilityChoices, setAbilityChoices] = useState<RollPackage[]>(() => makeEmptyAbilityChoice());
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<DrawerTab>("character");
   const [input, setInput] = useState("");
@@ -448,7 +453,7 @@ export function useGameSession() {
   const selectedOrigin = originTemplates.find((origin) => origin.id === selectedOriginId) || originTemplates[0];
 
   useEffect(() => {
-    setAbilityChoices(makeSingleAbilityChoice());
+    setAbilityChoices(makeEmptyAbilityChoice());
   }, [selectedOriginId]);
 
   useEffect(() => {
@@ -867,14 +872,32 @@ export function useGameSession() {
 
   function resetGame() {
     localStorage.removeItem(SETUP_KEY);
-    setAbilityChoices(makeSingleAbilityChoice());
+    setAbilityChoices(makeEmptyAbilityChoice());
     setSelectedInventoryMartialId(undefined);
     setSelectedAbilityInfoKey(undefined);
     setGame(normalizeGameState(structuredClone(initialGameState)));
   }
 
-  function rollStartingAbilities() {
-    setAbilityChoices(makeSingleAbilityChoice());
+  function rollStartingAbility(index: number) {
+    if (rolling || busy || uiLocked) return;
+    if (index < 0 || index >= CREATION_ABILITY_LABELS.length) return;
+
+    beginRolling({
+      label: `开局属性：${CREATION_ABILITY_LABELS[index]}`,
+      notation: "4d6",
+      diceGroups: [{ qty: 4, sides: 6 }],
+      animationKey: uid(`creation-ability-${index}`),
+      resolution: {
+        mode: "dropLowestSum"
+      },
+      settleMode: "engine"
+    }, (result) => {
+      setAbilityChoices((current) => {
+        const nextScores = [...(current[0] || [0, 0, 0, 0, 0, 0])] as RollPackage;
+        nextScores[index] = result.resolvedValue;
+        return [[...nextScores] as RollPackage];
+      });
+    });
   }
 
   async function callAi(
@@ -1933,6 +1956,8 @@ export function useGameSession() {
 
   function startOriginGame() {
     const baseChoice = abilityChoices[0] || ([0, 0, 0, 0, 0, 0] as RollPackage);
+    if (!isCompleteAbilityChoice(baseChoice)) return;
+
     const hero = buildCharacterFromOrigin(customName, selectedOrigin, baseChoice);
 
     lockUi(1400);
@@ -2659,7 +2684,7 @@ export function useGameSession() {
     beginTutorialCombat,
     skipTutorial,
     selectedOrigin,
-    rollStartingAbilities,
+    rollStartingAbility,
     startOriginGame,
     openDrawer,
     openPendingCheck,

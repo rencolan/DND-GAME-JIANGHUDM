@@ -11,7 +11,6 @@ import { CharacterTab } from "./CharacterTab";
 import { ChatLog } from "./ChatLog";
 import { CompanionsTab } from "./CompanionsTab";
 import { DicePanel } from "./DicePanel";
-import { DiceRollOverlay } from "./DiceRollOverlay";
 import { DrawerPanel } from "./DrawerPanel";
 import { EnemyCard } from "./EnemyCard";
 import { InventoryTab } from "./InventoryTab";
@@ -96,7 +95,6 @@ export function GameScreen({ session }: GameScreenProps) {
     fileInputRef,
     audioRef,
     closePanels,
-    completeRolling,
     applyDeepSeekPreset,
     toggleMusic,
     toggleSfx,
@@ -392,13 +390,6 @@ export function GameScreen({ session }: GameScreenProps) {
           </div>
         </section>
       )}
-
-      <DiceRollOverlay
-        rolling={session.rolling}
-        onComplete={completeRolling}
-        sfxEnabled={sfxEnabled}
-        sfxVolume={sfxVolume}
-      />
 
       <DicePanel
         diceOpen={diceOpen}

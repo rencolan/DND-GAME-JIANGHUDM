@@ -27,7 +27,7 @@ const DICE_THEME = "default";
 const DICE_THEME_COLOR = "#c6923d";
 const REVEAL_LINGER_MS = 1100;
 const FALLBACK_ROLL_MS = 900;
-const ENGINE_TIMEOUT_MS = 4500;
+const ENGINE_TIMEOUT_MS = 12000;
 const ROLL_SFX_SRC = "/assets/sfx/dice-roll.wav";
 const IMPACT_SFX_SRC = "/assets/sfx/dice-stop.wav";
 const DICE_BOX_CONTAINER_ID = "dice-box-overlay-stage";
@@ -42,6 +42,8 @@ function resolveRollValue(faceResults: number[], mode: RollingState["resolution"
   switch (mode) {
     case "sum":
       return faceResults.reduce((sum, value) => sum + value, 0);
+    case "dropLowestSum":
+      return faceResults.reduce((sum, value) => sum + value, 0) - Math.min(...faceResults);
     case "highest":
       return Math.max(...faceResults);
     case "lowest":
@@ -97,6 +99,11 @@ function buildRollingResult(rolling: RollingState, faceResults: number[], fallba
 }
 
 function describeRollingResult(rolling: RollingState, result: RollingResult) {
+  if (rolling.resolution.mode === "dropLowestSum") {
+    const base = `${rolling.notation.toUpperCase()} 去最低 · 取 ${result.resolvedValue}`;
+    return rolling.resolution.bonusLabel ? `${base} · ${rolling.resolution.bonusLabel}` : base;
+  }
+
   const base = rolling.resolution.mode === "highest"
     ? `优势判定 · 取 ${result.resolvedValue}`
     : rolling.resolution.mode === "lowest"
@@ -115,6 +122,7 @@ export function DiceRollOverlay({ rolling, onComplete, sfxEnabled, sfxVolume }: 
   const timeoutTimerRef = useRef<number | null>(null);
   const rollAudioRef = useRef<HTMLAudioElement | null>(null);
   const impactAudioRef = useRef<HTMLAudioElement | null>(null);
+  const stageRef = useRef<HTMLDivElement | null>(null);
   const settledRef = useRef(false);
   const onCompleteRef = useRef(onComplete);
   const [mode, setMode] = useState<OverlayMode>("idle");
@@ -187,6 +195,16 @@ export function DiceRollOverlay({ rolling, onComplete, sfxEnabled, sfxVolume }: 
     return diceBoxRef.current;
   }
 
+  async function waitForVisibleStage() {
+    await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+    await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+
+    const rect = stageRef.current?.getBoundingClientRect();
+    if (!rect || rect.width <= 0 || rect.height <= 0) {
+      throw new Error("Dice stage is not visible.");
+    }
+  }
+
   async function playSound(kind: "roll" | "impact") {
     if (!sfxEnabled || sfxVolume <= 0) return;
 
@@ -207,9 +225,6 @@ export function DiceRollOverlay({ rolling, onComplete, sfxEnabled, sfxVolume }: 
   useEffect(() => {
     const prewarmTimer = window.setTimeout(() => {
       ensureSfx();
-      void ensureDiceBox().catch((error) => {
-        console.warn("Dice Box preload failed; the next roll will use fallback if it still cannot initialize.", error);
-      });
     }, 250);
 
     return () => window.clearTimeout(prewarmTimer);
@@ -271,6 +286,7 @@ export function DiceRollOverlay({ rolling, onComplete, sfxEnabled, sfxVolume }: 
 
     void (async () => {
       try {
+        await waitForVisibleStage();
         const diceBox = await ensureDiceBox();
         if (cancelled) return;
 
@@ -320,7 +336,7 @@ export function DiceRollOverlay({ rolling, onComplete, sfxEnabled, sfxVolume }: 
   return (
     <section className={`roll-overlay ${rolling ? "visible" : "hidden"}`} aria-hidden={!rolling}>
       <div className="roll-overlay-card">
-        <div className="roll-overlay-stage">
+        <div className="roll-overlay-stage" ref={stageRef}>
           <div
             id={DICE_BOX_CONTAINER_ID}
             className={`roll-engine-canvas ${showEngine ? "active" : ""}`}

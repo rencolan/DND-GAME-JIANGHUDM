@@ -10,7 +10,7 @@ export type DiceGroup = {
   sides: number;
 };
 
-export type RollingResolutionMode = "sum" | "first" | "highest" | "lowest";
+export type RollingResolutionMode = "sum" | "first" | "highest" | "lowest" | "dropLowestSum";
 
 export type RollingResolution = {
   mode: RollingResolutionMode;
