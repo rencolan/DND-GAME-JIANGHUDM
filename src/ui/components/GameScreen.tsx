@@ -5,6 +5,7 @@ import { buildLocationOpportunities, currentLocationName, isVisibleNpc, primaryR
 import type { DrawerTab, Message, PendingCheck } from "../../types";
 import { sceneAssets } from "../display";
 import type { GameSession } from "../useGameSession";
+import { buildMessageVisualContext } from "../visuals/context";
 import { AppHeader } from "./AppHeader";
 import { CharacterTab } from "./CharacterTab";
 import { ChatLog } from "./ChatLog";
@@ -137,6 +138,10 @@ export function GameScreen({ session }: GameScreenProps) {
     || game.locations.find((location) => location.current)
     || game.locations[0];
   const sceneBackground = sceneAssets[game.sceneType] || sceneAssets.market;
+  const messageVisualContext = useMemo(
+    () => buildMessageVisualContext(game, locationName),
+    [game.npcs, game.locations, game.sceneType, locationName]
+  );
   const qiLimit = Math.min(6, game.character.qi);
   const lowQi = game.character.qi <= 1;
   const tutorialActive = game.chapterState.stage === "tutorial_story" || game.chapterState.stage === "tutorial_combat";
@@ -328,7 +333,7 @@ export function GameScreen({ session }: GameScreenProps) {
         character={game.character}
       />
 
-      <ChatLog messages={game.messages} busy={busy} endRef={endRef}>
+      <ChatLog messages={game.messages} busy={busy} endRef={endRef} visualContext={messageVisualContext}>
         <ObjectiveCard
           objective={game.objective}
           locationName={locationName}

@@ -599,6 +599,105 @@ button {
   box-shadow: 0 12px 28px rgba(0, 0, 0, .22);
 }
 
+.message-row {
+  display: flex;
+  width: 100%;
+  align-items: flex-start;
+  gap: 9px;
+}
+
+.message-row.player {
+  justify-content: flex-end;
+}
+
+.message-row.with-speaker .message {
+  max-width: min(82%, 680px);
+}
+
+.message-speaker-portrait {
+  flex: 0 0 auto;
+  width: 42px;
+  height: 42px;
+  margin-top: 2px;
+  border: 1px solid rgba(242, 212, 141, .38);
+  border-radius: 50%;
+  object-fit: cover;
+  object-position: top center;
+  background: rgba(12, 8, 6, .8);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, .28);
+}
+
+.message-visuals {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+  min-width: min(420px, 100%);
+}
+
+.message-visuals.multi {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.message-visual {
+  position: relative;
+  overflow: hidden;
+  margin: 0;
+  border: 1px solid rgba(242, 212, 141, .24);
+  border-radius: 12px;
+  background: rgba(12, 8, 6, .72);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .03);
+}
+
+.message-visual img {
+  display: block;
+  width: 100%;
+  height: 220px;
+  object-fit: cover;
+  background: rgba(0, 0, 0, .32);
+}
+
+.message-visual.npc img {
+  height: 260px;
+  object-position: top center;
+}
+
+.message-visual figcaption {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  padding: 42px 12px 10px;
+  background: linear-gradient(180deg, transparent, rgba(9, 6, 4, .92) 48%, rgba(9, 6, 4, .96));
+}
+
+.message-visual figcaption span {
+  display: inline-block;
+  margin-bottom: 3px;
+  color: var(--gold);
+  font-size: 11px;
+  letter-spacing: .12em;
+}
+
+.message-visual figcaption b {
+  display: block;
+  color: var(--gold-2);
+  font-size: 16px;
+  line-height: 1.25;
+}
+
+.message-visual figcaption small,
+.message-visual figcaption p {
+  display: block;
+  margin: 3px 0 0;
+  color: rgba(244, 231, 199, .82);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.message-visual figcaption p {
+  color: var(--muted);
+}
+
 .objective-card, .pending-check, .enemy-card {
   width: 100%;
   margin: 0 0 12px;
@@ -1967,6 +2066,28 @@ button {
 }
 
 @media (max-width: 720px) {
+  .message {
+    max-width: 94%;
+  }
+
+  .message-row.with-speaker .message {
+    max-width: calc(100% - 54px);
+  }
+
+  .message-speaker-portrait {
+    width: 38px;
+    height: 38px;
+  }
+
+  .message-visuals.multi {
+    grid-template-columns: 1fr;
+  }
+
+  .message-visual img,
+  .message-visual.npc img {
+    height: 210px;
+  }
+
   .training-actions,
   .insight-actions {
     grid-template-columns: 1fr;
