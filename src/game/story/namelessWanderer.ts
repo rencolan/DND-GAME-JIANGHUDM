@@ -215,6 +215,7 @@ export function buildNamelessTutorialTransitionText(kind: "won" | "skipped") {
 
 export function buildNamelessTutorialCompletionPatch(kind: "won" | "skipped"): GamePatch {
   return {
+    silverChange: kind === "won" ? 5 : undefined,
     location: "大理城",
     sceneType: "inn",
     objectiveUpdate: openingObjective,

@@ -91,6 +91,8 @@ export function GameScreen({ session }: GameScreenProps) {
     sfxVolume,
     setSfxVolume,
     uiLocked,
+    canRestoreCombatCheckpoint,
+    canRestoreActionCheckpoint,
     endRef,
     fileInputRef,
     audioRef,
@@ -123,7 +125,9 @@ export function GameScreen({ session }: GameScreenProps) {
     devGrantInternalManual,
     devRaiseCultivationRank,
     rollDice,
-    rollDamageDice
+    rollDamageDice,
+    restoreCombatCheckpoint,
+    restoreActionCheckpoint
   } = session;
 
   const panelOpen = drawerOpen || diceOpen;
@@ -147,11 +151,12 @@ export function GameScreen({ session }: GameScreenProps) {
   const tutorialStoryActive = tutorialActive && !tutorialCombatActive;
   const currentCheck = game.pendingCheck;
   const pendingDamage = game.pendingDamage;
+  const isDead = game.character.hp <= 0;
   const combatEscape = game.combat.active && currentCheck?.kind === "combat_escape";
   const combatInitiative = game.combat.active && game.combat.phase === "opening";
   const combatAttack = game.combat.active && game.combat.phase === "awaiting_hit_check" && !combatEscape;
   const awaitingDamage = Boolean(pendingDamage);
-  const controlsBlocked = uiLocked || Boolean(session.rolling);
+  const controlsBlocked = isDead || uiLocked || Boolean(session.rolling);
   const pendingDamageDice = pendingDamage
     ? (pendingDamage.isCritical ? doubleDamageDice(pendingDamage.damageDice) : pendingDamage.damageDice)
     : undefined;
@@ -318,7 +323,7 @@ export function GameScreen({ session }: GameScreenProps) {
   }
 
   return (
-    <main className={`app ${game.combat.active ? "combat" : ""}`} style={appStyle}>
+    <main className={`app ${game.combat.active ? "combat" : ""} ${isDead ? "dead" : ""}`} style={appStyle}>
       <audio ref={audioRef} src={BGM_SRC} preload="auto" loop />
       {uiLocked && <div className="ui-lock-shield" aria-hidden="true" />}
 
@@ -342,7 +347,40 @@ export function GameScreen({ session }: GameScreenProps) {
           onBeginTutorialCombat={beginTutorialCombat}
           onSkipTutorial={skipTutorial}
         />
-        {!game.combat.active && (
+        {isDead && (
+          <article className="death-card">
+            <span>死亡结算</span>
+            <b>你已死亡</b>
+            <p>气血已经归零，本次流程结束。可回到最近的战前或行动前检查点，也可以重新开始或导入旧存档。</p>
+            <div className="death-actions">
+              {canRestoreCombatCheckpoint && (
+                <button type="button" className="primary-inline" onClick={restoreCombatCheckpoint} disabled={busy}>
+                  回到战前
+                </button>
+              )}
+              {canRestoreActionCheckpoint && (
+                <button type="button" className="secondary-inline" onClick={restoreActionCheckpoint} disabled={busy}>
+                  回到行动前
+                </button>
+              )}
+              <button type="button" className="secondary-inline" onClick={resetGame} disabled={busy}>
+                重新开始
+              </button>
+              <button
+                type="button"
+                className="secondary-inline"
+                onClick={() => {
+                  setActiveTab("system");
+                  openDrawer();
+                }}
+                disabled={busy}
+              >
+                打开系统面板
+              </button>
+            </div>
+          </article>
+        )}
+        {!isDead && !game.combat.active && (
           <OpportunityBoard
             opportunities={opportunities}
             controlsBlocked={controlsBlocked}
@@ -352,8 +390,8 @@ export function GameScreen({ session }: GameScreenProps) {
             }}
           />
         )}
-        {game.combat.active && <EnemyCard combat={game.combat} />}
-        {!game.combat.active && (
+        {!isDead && game.combat.active && <EnemyCard combat={game.combat} />}
+        {!isDead && !game.combat.active && (
           <PendingCheckCard
             currentCheck={currentCheck}
             pendingDamage={pendingDamage}
@@ -367,7 +405,7 @@ export function GameScreen({ session }: GameScreenProps) {
         )}
       </ChatLog>
 
-      {hudState && (
+      {!isDead && hudState && (
         <section className="action-hud">
           <div className={`action-hud-card ${hudState.kind}`}>
             <div className="action-hud-main">
@@ -391,22 +429,24 @@ export function GameScreen({ session }: GameScreenProps) {
         </section>
       )}
 
-      <DicePanel
-        diceOpen={diceOpen}
-        pendingDamage={pendingDamage}
-        pendingDamageDice={pendingDamageDice}
-        currentCheck={currentCheck}
-        combatInitiative={combatInitiative}
-        combatAttack={combatAttack}
-        pendingCheckReason={displayPendingCheckReason}
-        game={game}
-        qiInvest={qiInvest}
-        setQiInvest={setQiInvest}
-        qiLimit={qiLimit}
-        lowQi={lowQi}
-        rollDice={rollDice}
-        rollDamageDice={rollDamageDice}
-      />
+      {!isDead && (
+        <DicePanel
+          diceOpen={diceOpen}
+          pendingDamage={pendingDamage}
+          pendingDamageDice={pendingDamageDice}
+          currentCheck={currentCheck}
+          combatInitiative={combatInitiative}
+          combatAttack={combatAttack}
+          pendingCheckReason={displayPendingCheckReason}
+          game={game}
+          qiInvest={qiInvest}
+          setQiInvest={setQiInvest}
+          qiLimit={qiLimit}
+          lowQi={lowQi}
+          rollDice={rollDice}
+          rollDamageDice={rollDamageDice}
+        />
+      )}
 
       {!controlsBlocked && (
         <form className="input-bar" onSubmit={(event: FormEvent) => {

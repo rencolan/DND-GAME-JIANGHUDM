@@ -130,6 +130,9 @@ type EnemyTurnSummaryDetails = {
   nextPhase?: string;
 };
 
+const COMBAT_CHECKPOINT_KEY = "jianghu-dm-combat-checkpoint-v1";
+const ACTION_CHECKPOINT_KEY = "jianghu-dm-action-checkpoint-v1";
+
 const combatSceneLabels: Record<GameState["sceneType"], string> = {
   temple: "寺院",
   market: "市集",
@@ -435,6 +438,135 @@ function compactAiHistoryText(text: string, maxChars: number) {
   return compacted.length > maxChars ? `${compacted.slice(0, maxChars)}...` : compacted;
 }
 
+function writeStateCheckpoint(key: string, state: GameState) {
+  localStorage.setItem(key, JSON.stringify(state));
+}
+
+function readStateCheckpoint(key: string) {
+  return readJson<GameState | undefined>(key, undefined);
+}
+
+function clearStateCheckpoint(key: string) {
+  localStorage.removeItem(key);
+}
+
+function clearDeathCheckpoints() {
+  clearStateCheckpoint(COMBAT_CHECKPOINT_KEY);
+  clearStateCheckpoint(ACTION_CHECKPOINT_KEY);
+}
+
+function tryResolveDeathRescue(_state: GameState, _cause: string): GamePatch | undefined {
+  return undefined;
+}
+
+function itemCountMap(state: GameState) {
+  const counts = new Map<string, { name: string; count: number }>();
+  state.character.inventory.forEach((item) => {
+    const key = item.id || item.name;
+    const current = counts.get(key);
+    counts.set(key, {
+      name: item.name,
+      count: (current?.count || 0) + (item.count || 1)
+    });
+  });
+  return counts;
+}
+
+function inventoryGainLines(before: GameState, after: GameState) {
+  const beforeItems = itemCountMap(before);
+  const afterItems = itemCountMap(after);
+  return [...afterItems.entries()]
+    .map(([key, item]) => {
+      const beforeCount = beforeItems.get(key)?.count || 0;
+      const delta = item.count - beforeCount;
+      return delta > 0 ? `${item.name} x${delta}` : undefined;
+    })
+    .filter((line): line is string => Boolean(line));
+}
+
+function buildCombatSettlementText(before: GameState, after: GameState) {
+  const enemyName = before.combat.enemy || after.combat.enemy || "对手";
+  const enemyDefeated = before.combat.active
+    && before.combat.enemyHp !== undefined
+    && before.combat.enemyHp > 0
+    && !after.combat.active
+    && (after.combat.enemyHp || 0) <= 0;
+
+  if (!enemyDefeated) return undefined;
+
+  const gains: string[] = [];
+  const silverGain = after.character.silver - before.character.silver;
+  const rankGain = (after.cultivationRank || 1) - (before.cultivationRank || 1);
+  const itemGains = inventoryGainLines(before, after);
+
+  if (silverGain > 0) gains.push(`银两 +${silverGain}`);
+  if (rankGain > 0) gains.push(`修为 +${rankGain}`);
+  itemGains.forEach((item) => gains.push(item));
+
+  return [
+    `【战斗结算】${enemyName}已失去再战之力。`,
+    gains.length ? `收益：${gains.join("；")}。` : "收益：本场暂无明确掉落。",
+    "后续：可输入“搜刮”“检查尸身”或“检查战场”寻找线索、银两或可带走之物。",
+    `当前目标：${after.objective.title} - ${after.objective.text}`
+  ].join("\n");
+}
+
+function buildDeathCause(before: GameState, after: GameState, actionText: string) {
+  if (before.combat.active || after.combat.enemy) {
+    return `战斗中被 ${before.combat.enemy || after.combat.enemy || "对手"} 击杀`;
+  }
+  if ((after.innerInjury || 0) >= 20) {
+    return `内伤发作，气血耗尽`;
+  }
+  if ((after.combat.playerStatus || []).includes("poisoned")) {
+    return `毒性发作，气血耗尽`;
+  }
+  if ((after.combat.playerStatus || []).includes("cold")) {
+    return `寒毒压身，气血断绝`;
+  }
+  return actionText ? `行动失败：${actionText}` : "气血耗尽";
+}
+
+function buildDeathSettlementText(before: GameState, after: GameState, actionText: string) {
+  const cause = buildDeathCause(before, after, actionText);
+  return [
+    "【死亡结算】你已死亡。",
+    `死因：${cause}。`,
+    `状态：HP ${before.character.hp} → ${after.character.hp}，内伤 ${after.innerInjury || 0}。`,
+    "后果：本次流程结束，不能继续普通行动。",
+    "可选操作：回到战前/行动前、重新开始，或从系统面板导入旧存档。"
+  ].join("\n");
+}
+
+function resolveDeathOutcome(before: GameState, after: GameState, actionText: string) {
+  if (before.character.hp <= 0 || after.character.hp > 0) {
+    return { state: after, messages: [] as Message[] };
+  }
+
+  const cause = buildDeathCause(before, after, actionText);
+  const rescuePatch = tryResolveDeathRescue(after, cause);
+  if (rescuePatch) {
+    const rescued = applyPatchToState(after, rescuePatch);
+    return {
+      state: rescued,
+      messages: [{
+        id: uid("system"),
+        role: "system" as const,
+        text: `【濒死救援】${cause}，但有人在最后一刻把你从死线上拉了回来。`
+      }]
+    };
+  }
+
+  return {
+    state: after,
+    messages: [{
+      id: uid("system"),
+      role: "system" as const,
+      text: buildDeathSettlementText(before, after, actionText)
+    }]
+  };
+}
+
 export function useGameSession() {
   const savedGame = readJson<GameState>(SAVE_KEY, initialGameState);
   const initialApi = readJson<ApiConfig>(API_KEY, defaultApiConfig("openai"));
@@ -469,6 +601,8 @@ export function useGameSession() {
   const rollCompletionRef = useRef<((result: RollingResult) => void) | null>(null);
 
   const canContinue = Boolean(readJson<GameState>(SAVE_KEY, initialGameState).setupComplete);
+  const canRestoreCombatCheckpoint = Boolean(readStateCheckpoint(COMBAT_CHECKPOINT_KEY));
+  const canRestoreActionCheckpoint = Boolean(readStateCheckpoint(ACTION_CHECKPOINT_KEY));
   const selectedOrigin = originTemplates.find((origin) => origin.id === selectedOriginId) || originTemplates[0];
 
   useEffect(() => {
@@ -582,10 +716,33 @@ export function useGameSession() {
       });
     }
 
-    return { state: finalState, messages };
+    if (!baseState.combat.active && finalState.combat.active && baseState.character.hp > 0) {
+      writeStateCheckpoint(COMBAT_CHECKPOINT_KEY, baseState);
+    }
+
+    const combatSettlement = buildCombatSettlementText(baseState, finalState);
+    if (combatSettlement) {
+      messages.push({
+        id: uid("system"),
+        role: "system",
+        text: combatSettlement
+      });
+    }
+
+    const deathOutcome = resolveDeathOutcome(baseState, finalState, actionText);
+    messages.push(...deathOutcome.messages);
+
+    if (baseState.combat.active && !deathOutcome.state.combat.active && deathOutcome.state.character.hp > 0) {
+      clearStateCheckpoint(COMBAT_CHECKPOINT_KEY);
+    }
+
+    return { state: deathOutcome.state, messages };
   }
 
   function advanceFormalState(baseState: GameState) {
+    if (baseState.character.hp > 0) {
+      writeStateCheckpoint(ACTION_CHECKPOINT_KEY, baseState);
+    }
     const time = advanceTime(baseState);
     return normalizeGameState({
       ...baseState,
@@ -637,7 +794,10 @@ export function useGameSession() {
 
   function devStartCombat(enemyName: string) {
     setGame((prev) => applyDevPatch(
-      prev,
+      (() => {
+        writeStateCheckpoint(COMBAT_CHECKPOINT_KEY, prev);
+        return prev;
+      })(),
       startCombat(prev, enemyName, {
         skipInitiative: true,
         systemNote: `开发面板生成战斗：${enemyName}`
@@ -648,6 +808,7 @@ export function useGameSession() {
   }
 
   function devEndCombat() {
+    clearStateCheckpoint(COMBAT_CHECKPOINT_KEY);
     setGame((prev) => applyDevPatch(
       prev,
       {
@@ -879,8 +1040,8 @@ export function useGameSession() {
   }
 
   function exportSave() {
-    const save = JSON.stringify(game, null, 2);
-    const blob = new Blob([save], { type: "application/json" });
+    const save = JSON.stringify(normalizeGameState(game), null, 2);
+    const blob = new Blob(["\uFEFF", save], { type: "application/json;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
@@ -891,10 +1052,40 @@ export function useGameSession() {
 
   function resetGame() {
     localStorage.removeItem(SETUP_KEY);
+    clearDeathCheckpoints();
     setAbilityChoices(makeEmptyAbilityChoice());
     setSelectedInventoryMartialId(undefined);
     setSelectedAbilityInfoKey(undefined);
     setGame(normalizeGameState(structuredClone(initialGameState)));
+  }
+
+  function restoreCheckpoint(key: string, label: string) {
+    const checkpoint = readStateCheckpoint(key);
+    if (!checkpoint) {
+      pushSystemMessage(`没有可用的${label}存档。`);
+      return;
+    }
+
+    clearStateCheckpoint(key);
+    closePanels();
+    setInput("");
+    setBusy(false);
+    const restored = normalizeGameState(checkpoint);
+    setGame({
+      ...restored,
+      messages: [
+        ...restored.messages,
+        { id: uid("system"), role: "system", text: `【读档】已回到${label}。` }
+      ]
+    });
+  }
+
+  function restoreCombatCheckpoint() {
+    restoreCheckpoint(COMBAT_CHECKPOINT_KEY, "战前");
+  }
+
+  function restoreActionCheckpoint() {
+    restoreCheckpoint(ACTION_CHECKPOINT_KEY, "行动前");
   }
 
   function rollStartingAbility(index: number) {
@@ -1207,6 +1398,10 @@ export function useGameSession() {
   async function submitAction(textOverride?: string) {
     const text = (textOverride || input).trim();
     if (!text || busy) return;
+    if (game.character.hp <= 0) {
+      pushSystemMessage("【死亡结算】你已死亡，不能继续普通行动。请回到战前/行动前，或重新开始。");
+      return;
+    }
     if (game.pendingDamage) {
       closePanels();
       setInput("");
@@ -1248,6 +1443,9 @@ export function useGameSession() {
     setBusy(true);
     closePanels();
     setInput("");
+    if (game.character.hp > 0) {
+      writeStateCheckpoint(ACTION_CHECKPOINT_KEY, game);
+    }
 
     const playerMessage: Message = { id: uid("player"), role: "player", text };
     const nextTime = advanceTime(game);
@@ -1586,6 +1784,9 @@ export function useGameSession() {
     tryPlayMusic();
     setBusy(true);
     closePanels();
+    if (game.character.hp > 0) {
+      writeStateCheckpoint(ACTION_CHECKPOINT_KEY, game);
+    }
 
     const combinedText = `${pendingDamage.hitText}\n${text}`;
     const diceMessage: Message = { id: uid("dice"), role: "dice", text: combinedText };
@@ -1717,6 +1918,9 @@ export function useGameSession() {
     tryPlayMusic();
     setBusy(true);
     closePanels();
+    if (game.character.hp > 0) {
+      writeStateCheckpoint(ACTION_CHECKPOINT_KEY, game);
+    }
 
     const diceMessage: Message = { id: uid("dice"), role: "dice", text };
     const nextTime = advanceTime(game);
@@ -1943,6 +2147,7 @@ export function useGameSession() {
       try {
         const imported = JSON.parse(String(reader.result)) as GameState;
         closePanels();
+        clearDeathCheckpoints();
         setGame(normalizeGameState(imported));
         localStorage.setItem(SETUP_KEY, "1");
       } catch {
@@ -1977,6 +2182,7 @@ export function useGameSession() {
     closePanels();
     setGame((prev) => {
       if (!isTutorialGame(prev) || isTutorialCombatGame(prev)) return prev;
+      writeStateCheckpoint(COMBAT_CHECKPOINT_KEY, prev);
 
       const staged = applyPatchToState(prev, {
         chapterStateUpdate: {
@@ -2006,6 +2212,7 @@ export function useGameSession() {
 
     lockUi(1400);
     closePanels();
+    clearDeathCheckpoints();
     setGame(normalizeGameState({
       ...structuredClone(initialGameState),
       setupComplete: true,
@@ -2556,6 +2763,7 @@ export function useGameSession() {
     } = {}
   ) {
     if (rolling || busy) return;
+    if (game.character.hp <= 0) return;
 
     const sendToDm = options.sendToDm ?? Boolean(check);
     const hasActivePrompt = Boolean(check);
@@ -2641,6 +2849,7 @@ export function useGameSession() {
 
   function rollDamageDice(pendingDamage: PendingDamage) {
     if (rolling || busy) return;
+    if (game.character.hp <= 0) return;
 
     const actualDamageDice = pendingDamage.isCritical ? doubleDamageDice(pendingDamage.damageDice) : pendingDamage.damageDice;
     const bonus = pendingDamage.damageBonus || 0;
@@ -2714,6 +2923,8 @@ export function useGameSession() {
     fadeTimerRef,
     uiLockTimerRef,
     canContinue,
+    canRestoreCombatCheckpoint,
+    canRestoreActionCheckpoint,
     closePanels,
     tryPlayMusic,
     lockUi,
@@ -2754,7 +2965,9 @@ export function useGameSession() {
     submitDiceResult,
     submitDamageResult,
     queuePendingDamage,
-    importSave
+    importSave,
+    restoreCombatCheckpoint,
+    restoreActionCheckpoint
   };
 }
 
