@@ -10,7 +10,13 @@ import {
   stripJsonBlock,
   withSceneFallback
 } from "../game/ai/helpers";
-import { buildCombatEscapeIntentPrompt, buildCombatNarrationPrompt, buildSystemPrompt } from "../game/ai/prompt";
+import {
+  buildCombatEscapeIntentPrompt,
+  buildCombatIntentSystemPrompt,
+  buildCombatNarrationPrompt,
+  buildCombatNarrationSystemPrompt,
+  buildSystemPrompt
+} from "../game/ai/prompt";
 import { buildCombatEscapeCheck, doubleDamageDice, prepareCombatDamageRoll, resolveEnemyTurn, startCombat } from "../game/combat";
 import { applyPatchToState, normalizeGameState } from "../game/engine";
 import { localDm } from "../game/localdm";
@@ -94,6 +100,14 @@ type CombatAiStep = {
   actionText: string;
   prompt: string;
   fallbackText: string;
+};
+
+type AiCallOptions = {
+  systemPrompt?: string;
+  historyLimit?: number;
+  historyChars?: number;
+  maxTokens?: number;
+  temperature?: number;
 };
 
 type EnemyTurnSummaryDetails = {
@@ -414,6 +428,11 @@ function buildEnemyTurnSummary(enemyName: string, details: EnemyTurnSummaryDetai
   lines.push(`检定 ${details.total} · d20=${details.naturalRoll}`);
   lines.push(`你的 HP：${details.heroHpBefore} → ${details.heroHpAfter}`);
   return buildCombatSummaryMessage("敌方结果", lines);
+}
+
+function compactAiHistoryText(text: string, maxChars: number) {
+  const compacted = text.replace(/\s+/g, " ").trim();
+  return compacted.length > maxChars ? `${compacted.slice(0, maxChars)}...` : compacted;
 }
 
 export function useGameSession() {
@@ -904,7 +923,8 @@ export function useGameSession() {
     updatedGame: GameState,
     playerAction: string,
     customPrompt?: string,
-    fallbackText?: string
+    fallbackText?: string,
+    options: AiCallOptions = {}
   ): Promise<AiCallResult> {
     const globalUpdateDue = updatedGame.actionCount % WORLD_STEP === 0;
     const fallbackNarration = localDm(playerAction, updatedGame, globalUpdateDue).text;
@@ -918,12 +938,17 @@ export function useGameSession() {
     }
 
     const endpoint = resolveApiEndpoint(api);
-    const messages = [
-      { role: "system", content: buildSystemPrompt(updatedGame, globalUpdateDue) },
-      ...updatedGame.messages.slice(-10).map((message) => ({
+    const historyLimit = options.historyLimit ?? 6;
+    const historyChars = options.historyChars ?? 260;
+    const historyMessages = historyLimit > 0
+      ? updatedGame.messages.slice(-historyLimit).map((message) => ({
         role: message.role === "player" ? "user" : "assistant",
-        content: message.text
-      })),
+        content: compactAiHistoryText(message.text, historyChars)
+      }))
+      : [];
+    const messages = [
+      { role: "system", content: options.systemPrompt || buildSystemPrompt(updatedGame, globalUpdateDue) },
+      ...historyMessages,
       ...(customPrompt ? [{ role: "user", content: customPrompt }] : []),
       { role: "user", content: playerAction }
     ];
@@ -937,8 +962,8 @@ export function useGameSession() {
       body: JSON.stringify({
         model: api.model,
         messages,
-        temperature: 0.8,
-        max_tokens: 700
+        temperature: options.temperature ?? 0.8,
+        max_tokens: options.maxTokens ?? 700
       })
     });
 
@@ -969,7 +994,12 @@ export function useGameSession() {
 
   async function callNarrationStep(step: CombatAiStep): Promise<AiNarrationOutcome> {
     try {
-      const aiResult = await callAi(step.state, step.actionText, step.prompt, step.fallbackText);
+      const aiResult = await callAi(step.state, step.actionText, step.prompt, step.fallbackText, {
+        systemPrompt: buildCombatNarrationSystemPrompt(),
+        historyLimit: 0,
+        maxTokens: 260,
+        temperature: 0.55
+      });
       return {
         text: aiResult.text || step.fallbackText,
         patch: filterAiCombatPatch(aiResult.patch)
@@ -1093,7 +1123,13 @@ export function useGameSession() {
     setGame(actionState);
 
     try {
-      const aiResult = await callAi(actionState, text, buildCombatEscapeIntentPrompt(actionState, text), fallbackText);
+      const aiResult = await callAi(actionState, text, buildCombatEscapeIntentPrompt(actionState, text), fallbackText, {
+        systemPrompt: buildCombatIntentSystemPrompt(),
+        historyLimit: 2,
+        historyChars: 180,
+        maxTokens: 360,
+        temperature: 0.45
+      });
       const resolvedCheck = buildCombatEscapeCheck(actionState, text, aiResult.proposals.proposedCheck) || fallbackCheck;
       setGame((prev) => {
         const patched = applyPatchToState(
@@ -1436,7 +1472,15 @@ export function useGameSession() {
         : globalUpdateDue
           ? "Advance the broader world a little in the narration."
           : undefined;
-      const aiResult = await callAi(baseGame, text, aiPrompt);
+      const aiResult = await callAi(baseGame, text, aiPrompt, undefined, baseGame.combat.active
+        ? {
+          systemPrompt: buildCombatIntentSystemPrompt(),
+          historyLimit: 2,
+          historyChars: 180,
+          maxTokens: 360,
+          temperature: 0.55
+        }
+        : undefined);
       setGame((prev) => {
         const combatPatched = applyPatchToState(prev, withSceneFallback(localCombatResolution.patch, localCombatResolution.text, text));
         const economyResolution = baseGame.combat.active

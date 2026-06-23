@@ -45,7 +45,11 @@ echo Starting local stack...
 echo.
 
 if exist "%KOBOLD_LAUNCHER%" (
-  call :launch "KoboldCpp" cmd /k "cd /d ""%BACKEND_DIR%"" && call ""%KOBOLD_LAUNCHER%"""
+  if defined DRY_RUN (
+    echo [dry-run] start "KoboldCpp" cmd /k "cd /d ""%BACKEND_DIR%"" ^&^& call ""%KOBOLD_LAUNCHER%"""
+  ) else (
+    start "KoboldCpp" cmd /k "cd /d ""%BACKEND_DIR%"" && call ""%KOBOLD_LAUNCHER%"""
+  )
   call :wait_seconds 2
 ) else (
   echo No backend\koboldcpp-launch.bat found. Skipping automatic koboldcpp launch.
@@ -53,13 +57,25 @@ if exist "%KOBOLD_LAUNCHER%" (
   echo.
 )
 
-call :launch "Jianghu Backend Service" cmd /k "cd /d ""%BACKEND_DIR%"" && npm run start:service"
+if defined DRY_RUN (
+  echo [dry-run] start "Jianghu Backend Service" cmd /k "cd /d ""%BACKEND_DIR%"" ^&^& npm run start:service"
+) else (
+  start "Jianghu Backend Service" cmd /k "cd /d ""%BACKEND_DIR%"" && npm run start:service"
+)
 call :wait_seconds 2
 
-call :launch "Jianghu Backend Bridge" cmd /k "cd /d ""%BACKEND_DIR%"" && npm run start:bridge"
+if defined DRY_RUN (
+  echo [dry-run] start "Jianghu Backend Bridge" cmd /k "cd /d ""%BACKEND_DIR%"" ^&^& npm run start:bridge"
+) else (
+  start "Jianghu Backend Bridge" cmd /k "cd /d ""%BACKEND_DIR%"" && npm run start:bridge"
+)
 call :wait_seconds 2
 
-call :launch "Jianghu Frontend Dev Server" cmd /k "cd /d ""%ROOT_DIR%"" && npm run dev"
+if defined DRY_RUN (
+  echo [dry-run] start "Jianghu Frontend Dev Server" cmd /k "cd /d ""%ROOT_DIR%"" ^&^& npm run dev"
+) else (
+  start "Jianghu Frontend Dev Server" cmd /k "cd /d ""%ROOT_DIR%"" && npm run dev"
+)
 call :wait_seconds 4
 
 echo.
@@ -73,16 +89,6 @@ echo Model: your KOBOLD_MODEL from backend\.env
 echo.
 echo If something does not work, check the opened windows for error messages.
 echo.
-exit /b 0
-
-:launch
-set "WINDOW_TITLE=%~1"
-shift
-if defined DRY_RUN (
-  echo [dry-run] start "%WINDOW_TITLE%" %*
-) else (
-  start "%WINDOW_TITLE%" %*
-)
 exit /b 0
 
 :wait_seconds

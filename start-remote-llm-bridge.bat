@@ -36,10 +36,18 @@ if not exist "%KOBOLD_LAUNCHER%" (
 echo Starting koboldcpp and bridge for the Render backend...
 echo.
 
-call :launch "KoboldCpp" cmd /k "cd /d ""%BACKEND_DIR%"" && call ""%KOBOLD_LAUNCHER%"""
+if defined DRY_RUN (
+  echo [dry-run] start "KoboldCpp" cmd /k "cd /d ""%BACKEND_DIR%"" ^&^& call ""%KOBOLD_LAUNCHER%"""
+) else (
+  start "KoboldCpp" cmd /k "cd /d ""%BACKEND_DIR%"" && call ""%KOBOLD_LAUNCHER%"""
+)
 call :wait_seconds 3
 
-call :launch "Jianghu Backend Bridge" cmd /k "cd /d ""%BACKEND_DIR%"" && npm run start:bridge"
+if defined DRY_RUN (
+  echo [dry-run] start "Jianghu Backend Bridge" cmd /k "cd /d ""%BACKEND_DIR%"" ^&^& npm run start:bridge"
+) else (
+  start "Jianghu Backend Bridge" cmd /k "cd /d ""%BACKEND_DIR%"" && npm run start:bridge"
+)
 call :wait_seconds 2
 
 echo.
@@ -52,16 +60,6 @@ echo Keep both windows open while playing remotely.
 echo.
 exit /b 0
 
-:launch
-set "WINDOW_TITLE=%~1"
-shift
-if defined DRY_RUN (
-  echo [dry-run] start "%WINDOW_TITLE%" %*
-) else (
-  start "%WINDOW_TITLE%" %*
-)
-exit /b 0
-
 :wait_seconds
 if defined DRY_RUN (
   echo [dry-run] timeout /t %~1 /nobreak
@@ -69,4 +67,3 @@ if defined DRY_RUN (
   timeout /t %~1 /nobreak >nul
 )
 exit /b 0
-

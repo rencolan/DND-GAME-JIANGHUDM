@@ -11,7 +11,7 @@ export function MessageVisuals({ visuals }: MessageVisualsProps) {
     <div className={`message-visuals ${visuals.length > 1 ? "multi" : ""}`}>
       {visuals.map((visual) => (
         <figure key={visual.id} className={`message-visual ${visual.kind}`}>
-          <img src={visual.src} alt={visual.alt} loading="lazy" />
+          <img src={visual.src} alt={visual.alt} loading="eager" decoding="async" />
           <figcaption>
             <span>{visual.kind === "npc" ? "人物登场" : "场景"}</span>
             <b>{visual.title}</b>
