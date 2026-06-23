@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { initialGameState, martialArtCatalog } from "../src/data";
 import { availableEnemyArts, adjustedArtWeight, effectiveEnemyAc, resolveCombatDamage, resolveEnemyPhase, startCombat } from "../src/game/combat";
 import { applyPatchToState, normalizeGameState } from "../src/game/engine";
+import { parseCombatDamageResult } from "../src/game/world/helpers";
 import { resolveWorldAction } from "../src/game/world/resolveWorldAction";
 import { buildLocationOpportunities } from "../src/game/world/opportunities";
 import type { GameState } from "../src/types";
@@ -126,6 +127,40 @@ test("martial effects apply bonus damage against statuses", () => {
   const patch = resolveCombatDamage(ready, { label: "参合指", total: 5 });
 
   assert.equal(patch.combatUpdate?.enemyHpChange, -8);
+});
+
+test("combat damage parsing ignores the prior hit roll d20 line", () => {
+  const combinedText = [
+    "【判定】罗汉拳",
+    "模式：常规",
+    "d20=16",
+    "加值：+2",
+    "总计：18 / DC 12",
+    "结果：成功",
+    "阶段：攻击",
+    "【伤害】罗汉拳 1d6 => [3] + 2 = 5"
+  ].join("\n");
+
+  const damage = parseCombatDamageResult(combinedText);
+
+  assert.equal(damage.label, "罗汉拳");
+  assert.equal(damage.total, 5);
+});
+
+test("combat damage parsing returns NaN without an explicit damage line", () => {
+  const hitOnlyText = [
+    "【判定】罗汉拳",
+    "模式：常规",
+    "d20=16",
+    "加值：+2",
+    "总计：18 / DC 12",
+    "结果：成功",
+    "阶段：攻击"
+  ].join("\n");
+
+  const damage = parseCombatDamageResult(hitOnlyText);
+
+  assert.equal(Number.isNaN(damage.total), true);
 });
 
 test("sample bosses expose phase profiles", () => {

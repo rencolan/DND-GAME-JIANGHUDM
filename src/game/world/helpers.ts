@@ -90,6 +90,12 @@ function extractLastNumber(text: string, pattern: RegExp) {
   return Number(match?.[1] || Number.NaN);
 }
 
+function findDamageLine(text: string) {
+  return text.split(/\r?\n/).reverse().find((line) =>
+    line.includes("【伤害】") || line.includes("銆愬激瀹")
+  );
+}
+
 export function parseHitResult(text: string): ParsedHitResult {
   const label = extractLabel(text, "判定");
   const naturalRoll = extractLastNumber(text, /d20[=:：]\s*(\d+)/);
@@ -104,7 +110,8 @@ export function parseHitResult(text: string): ParsedHitResult {
     : text.includes("结果：失败")
       ? false
       : (naturalRoll === 20 || total >= dc);
-  const damageTotal = extractLastNumber(text, /=\s*(\d+)\s*$/m);
+  const damageLine = findDamageLine(text);
+  const damageTotal = damageLine ? extractLastNumber(damageLine, /=\s*(\d+)\s*$/) : Number.NaN;
   const isCritical = naturalRoll === 20 || text.includes("暴击：是") || text.includes("暴击");
 
   return {
@@ -119,8 +126,11 @@ export function parseHitResult(text: string): ParsedHitResult {
 }
 
 export function parseDamageResult(text: string): ParsedDamageResult {
-  const label = extractLabel(text, "伤害")?.match(/^(.+?)\s+\d+d\d+/)?.[1]?.trim() || extractLabel(text, "伤害");
-  const total = extractLastNumber(text, /=\s*(\d+)\s*$/m);
+  const damageLine = findDamageLine(text);
+  if (!damageLine) return { label: undefined, total: Number.NaN };
+  const label = extractLabel(damageLine, "伤害")?.match(/^(.+?)\s+\d+d\d+/)?.[1]?.trim()
+    || extractLabel(damageLine, "伤害");
+  const total = extractLastNumber(damageLine, /=\s*(\d+)\s*$/);
   return { label, total };
 }
 
