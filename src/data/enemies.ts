@@ -10,11 +10,18 @@ type EnemyPreset = {
   maxQi: number;
   ac: number;
   archetype: EnemyArchetype;
+  portrait?: string;
   intent: string;
   abilities: Record<"str" | "dex" | "con" | "int" | "cha" | "wis", number>;
   martialArts: MartialArt[];
   tags: string[];
 };
+
+export function enemyPortraitForArchetype(archetype: EnemyArchetype) {
+  return archetype === "boss"
+    ? "./assets/enemies/enemy-boss.png"
+    : "./assets/enemies/enemy-common.png";
+}
 
 export const enemyPresets: EnemyPreset[] = [
   {

@@ -25,6 +25,7 @@ import {
 import { resolveMartialArtStoryAction } from "../story/martialArtRoutes";
 import type { GamePatch, GameState, MartialArt, ProposedWorldAction } from "../../types";
 import { resolveEconomyCheckResult, tryResolveEconomyAction } from "./economySystem";
+import { resolveNpcRelationshipInteraction } from "./relationshipSystem";
 import {
   buildCombatActionCheck,
   buildCombatEscapePromptText,
@@ -972,6 +973,16 @@ export function resolveWorldAction(
 
   const travel = maybeTravel(state, action, globalUpdate, firstActionPatch);
   if (travel) return travel;
+
+  const npcRelationshipInteraction = resolveNpcRelationshipInteraction(state, action);
+  if (npcRelationshipInteraction) {
+    return {
+      textId: "default_scene",
+      patch: withWorldPatch(state, globalUpdate, firstActionPatch, npcRelationshipInteraction.patch),
+      meta: { targetName: npcRelationshipInteraction.targetName, locationName: currentLocationName(state) },
+      textOverride: npcRelationshipInteraction.textOverride
+    };
+  }
 
   const genericCombat = maybeEnterGenericCombat(state, action, globalUpdate, firstActionPatch);
   if (genericCombat) return genericCombat;

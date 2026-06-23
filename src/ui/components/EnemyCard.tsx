@@ -4,8 +4,8 @@ import type { CombatState, EnemyArchetype } from "../../types";
 const archetypeLabels: Record<EnemyArchetype, string> = {
   brute: "重压莽夫",
   assassin: "快攻刺客",
-  internalist: "内功手",
-  poisoner: "毒手",
+  internalist: "内功高手",
+  poisoner: "毒功缠斗",
   defender: "守势高手",
   boss: "宗师强敌"
 };
@@ -33,17 +33,30 @@ export function EnemyCard({ combat }: { combat: CombatState }) {
 
   return (
     <article className="enemy-card">
-      <span>正在交手 · {archetype}</span>
-      <b>{combat.enemy}</b>
-      <small>回合 {combat.round || 1} · {combat.enemyPhase || combat.phase || "awaiting_hit_check"}</small>
-      {combat.stakes && <small>{combat.stakes}</small>}
-      {combat.enemyIntent && <small>意图：{combat.enemyIntent}</small>}
+      <div className="enemy-card-top">
+        {combat.enemyPortrait && (
+          <img
+            className="enemy-portrait"
+            src={combat.enemyPortrait}
+            alt={`${combat.enemy || "敌人"}立绘`}
+          />
+        )}
+        <div className="enemy-card-main">
+          <span>正在交手 · {archetype}</span>
+          <b>{combat.enemy}</b>
+          <small>回合 {combat.round || 1} · {combat.enemyPhase || combat.phase || "awaiting_hit_check"}</small>
+          {combat.stakes && <small>{combat.stakes}</small>}
+          {combat.enemyIntent && <small>意图：{combat.enemyIntent}</small>}
+        </div>
+      </div>
+
       <div className="enemy-bars">
         <label><span>生命</span><em>{combat.enemyHp}/{combat.enemyMaxHp}</em></label>
         <div className="bar"><span className="hp" style={{ width: `${hpPercent}%` }} /></div>
         <label><span>真气</span><em>{combat.enemyQi}/{combat.enemyMaxQi}</em></label>
         <div className="bar"><span className="qi" style={{ width: `${qiPercent}%` }} /></div>
       </div>
+
       {injury > 0 && (
         <small>内伤：{injury} · {injuryTierLabel(injury)}{injuryTick ? ` · 每轮先损 ${injuryTick}` : ""}</small>
       )}
@@ -55,7 +68,7 @@ export function EnemyCard({ combat }: { combat: CombatState }) {
           }).join(" / ")}
         </p>
       )}
-      {!!statuses.length && <small>状态：{statuses.join("、")}</small>}
+      {!!statuses.length && <small>敌方状态：{statuses.join("、")}</small>}
       {!!playerStatuses.length && <small>你身上：{playerStatuses.join("、")}</small>}
       {combat.lastCombatEvent && <small>最近：{combat.lastCombatEvent}</small>}
     </article>

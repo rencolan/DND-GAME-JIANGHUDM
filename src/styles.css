@@ -651,13 +651,13 @@ button {
 .message-visual img {
   display: block;
   width: 100%;
-  height: 220px;
-  object-fit: cover;
+  height: 260px;
+  object-fit: contain;
   background: rgba(0, 0, 0, .32);
 }
 
 .message-visual.npc img {
-  height: 260px;
+  height: 300px;
   object-position: top center;
 }
 
@@ -729,6 +729,28 @@ button {
 .enemy-card {
   border-color: rgba(157, 47, 47, .58);
   background: rgba(35, 13, 10, .8);
+}
+
+.enemy-card-top {
+  display: grid;
+  grid-template-columns: 78px minmax(0, 1fr);
+  gap: 11px;
+  align-items: start;
+}
+
+.enemy-card-main {
+  min-width: 0;
+}
+
+.enemy-portrait {
+  width: 78px;
+  height: 104px;
+  border: 1px solid rgba(242, 212, 141, .32);
+  border-radius: 7px;
+  object-fit: cover;
+  object-position: 50% 20%;
+  background: rgba(10, 7, 5, .62);
+  box-shadow: 0 10px 22px rgba(0, 0, 0, .28);
 }
 
 .enemy-card small {
@@ -1193,7 +1215,7 @@ button {
   z-index: 90;
   display: grid;
   place-items: center;
-  padding: 18px;
+  padding: 14px;
   background: rgba(0, 0, 0, .42);
   backdrop-filter: blur(6px);
 }
@@ -1201,21 +1223,16 @@ button {
 .lore-modal {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(180px, 260px) minmax(260px, 420px);
-  width: min(720px, 100%);
-  max-height: min(78vh, 720px);
+  grid-template-columns: minmax(150px, 210px) minmax(0, 1fr);
+  width: min(600px, 100%);
+  max-height: min(72vh, 620px);
   overflow: hidden;
   border: 1px solid rgba(242, 212, 141, .34);
-  border-radius: 16px;
+  border-radius: 14px;
   background:
     linear-gradient(135deg, rgba(42, 31, 22, .96), rgba(18, 12, 9, .98)),
     url("/assets/paper-texture.svg") center/360px repeat;
-  box-shadow: 0 26px 70px rgba(0, 0, 0, .52);
-}
-
-.lore-modal.martial,
-.lore-modal.manual {
-  grid-template-columns: minmax(0, 1fr);
+  box-shadow: 0 22px 54px rgba(0, 0, 0, .5);
 }
 
 .lore-modal-close {
@@ -1234,7 +1251,7 @@ button {
 }
 
 .lore-modal-image {
-  min-height: 320px;
+  min-height: 260px;
   background: rgba(0, 0, 0, .26);
 }
 
@@ -1242,14 +1259,14 @@ button {
   display: block;
   width: 100%;
   height: 100%;
-  max-height: 520px;
-  object-fit: cover;
+  max-height: 420px;
+  object-fit: contain;
   object-position: top center;
 }
 
 .lore-modal-body {
   overflow: auto;
-  padding: 24px;
+  padding: 18px 18px 16px;
 }
 
 .lore-modal-body > span {
@@ -1261,7 +1278,7 @@ button {
 .lore-modal-body h3 {
   margin: 6px 0 4px;
   color: var(--gold-2);
-  font-size: 28px;
+  font-size: 22px;
   line-height: 1.15;
 }
 
@@ -1280,22 +1297,23 @@ button {
 }
 
 .lore-modal-body p {
-  margin: 14px 0 0;
+  margin: 10px 0 0;
   color: rgba(244, 231, 199, .88);
-  line-height: 1.65;
+  line-height: 1.55;
+  font-size: 13px;
 }
 
 .lore-modal-body dl {
   display: grid;
-  gap: 8px;
-  margin: 18px 0 0;
+  gap: 6px;
+  margin: 12px 0 0;
 }
 
 .lore-modal-body dl div {
   display: grid;
-  grid-template-columns: 82px minmax(0, 1fr);
-  gap: 10px;
-  padding: 8px 10px;
+  grid-template-columns: 76px minmax(0, 1fr);
+  gap: 8px;
+  padding: 7px 9px;
   border: 1px solid rgba(242, 212, 141, .16);
   border-radius: 10px;
   background: rgba(0, 0, 0, .18);
@@ -2241,12 +2259,13 @@ button {
 
   .lore-modal {
     grid-template-columns: 1fr;
+    width: calc(100vw - 28px);
     max-height: 86vh;
   }
 
   .lore-modal-image {
-    min-height: 220px;
-    max-height: 280px;
+    min-height: 160px;
+    max-height: 230px;
   }
 
   .lore-modal-body {
@@ -2254,7 +2273,7 @@ button {
   }
 
   .lore-modal-body h3 {
-    font-size: 24px;
+    font-size: 21px;
   }
 
   .message-visuals.multi {
@@ -2263,7 +2282,7 @@ button {
 
   .message-visual img,
   .message-visual.npc img {
-    height: 210px;
+    height: 240px;
   }
 
   .training-actions,

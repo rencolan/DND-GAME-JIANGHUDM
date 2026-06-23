@@ -26,10 +26,30 @@ function isVisibleNpc(npc: Npc) {
   return !npc.hidden || npc.discovered || npc.companion;
 }
 
+function relationshipTierLabel(value: number) {
+  if (value >= 80) return "倾心";
+  if (value >= 65) return "知己";
+  if (value >= 50) return "信任";
+  if (value >= 35) return "顺眼";
+  return "生疏";
+}
+
 const martialCategoryLabels: Record<MartialArt["category"], string> = {
   external: "外功",
   internal: "内功"
 };
+
+function martialLoreImage(art: MartialArt) {
+  return art.category === "internal"
+    ? "/assets/lore/martial-internal.png"
+    : "/assets/lore/martial-external.png";
+}
+
+function manualLoreImage(item: Item) {
+  return item.dangerous
+    ? "/assets/lore/manual-dangerous.png"
+    : "/assets/lore/manual-standard.png";
+}
 
 function artLabel(art: MartialArt) {
   return `${art.grade} · ${martialCategoryLabels[art.category]} · ${abilityLabels[art.linkedAbility] || art.linkedAbility}`;
@@ -73,7 +93,7 @@ function buildNpcEntities(context: LoreEntityContext): LoreEntity[] {
       image: npc.portrait,
       fields: [
         { label: "所在地", value: npc.location },
-        { label: "关系", value: String(npc.relationship) },
+        { label: "关系", value: `${relationshipTierLabel(npc.relationship)} · ${npc.attitude}` },
         { label: "状态", value: npc.status },
         { label: "最近出现", value: npc.lastSeen },
         npc.tags.length ? { label: "标签", value: npc.tags.join(" / ") } : undefined
@@ -112,6 +132,7 @@ function buildMartialEntities(): LoreEntity[] {
     title: artLabel(art),
     subtitle: art.role ? `定位：${art.role}` : undefined,
     description: art.effectText || art.source,
+    image: martialLoreImage(art),
     fields: artFields(art),
     relatedArt: art
   }));
@@ -130,6 +151,7 @@ function buildManualEntities(): LoreEntity[] {
         title: "功法秘笈",
         subtitle: art ? `可参照修炼：${art.name}` : undefined,
         description: item.desc,
+        image: manualLoreImage(item),
         fields: manualFields(item, art),
         relatedArt: art,
         relatedItem: item

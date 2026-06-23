@@ -335,6 +335,7 @@ export interface CombatState {
   enemyPhase?: string;
   enemyIntent?: string;
   enemyArchetype?: EnemyArchetype;
+  enemyPortrait?: string;
   lastCombatEvent?: string;
 }
 

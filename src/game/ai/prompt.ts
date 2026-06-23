@@ -48,6 +48,14 @@ function abilityMod(value: number) {
   return Math.floor((value - 10) / 2);
 }
 
+function relationshipTierLabel(value: number) {
+  if (value >= 80) return "devoted";
+  if (value >= 65) return "confidant";
+  if (value >= 50) return "trusted";
+  if (value >= 35) return "familiar";
+  return "stranger";
+}
+
 function buildNpcSummary(state: GameState, globalUpdate: boolean) {
   const here = currentLocation(state);
   return state.npcs
@@ -57,6 +65,7 @@ function buildNpcSummary(state: GameState, globalUpdate: boolean) {
       name: npc.name,
       location: npc.location,
       attitude: npc.attitude,
+      relationshipTier: relationshipTierLabel(npc.relationship),
       goal: npc.goal,
       status: npc.status
     }));

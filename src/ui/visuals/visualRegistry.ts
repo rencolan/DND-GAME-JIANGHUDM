@@ -70,7 +70,7 @@ export const locationSceneVisuals: Record<string, Omit<MessageVisual, "id" | "ki
     title: "大理城",
     subtitle: "苍山洱海之间的江湖入口",
     caption: "城中消息灵通，客栈、坊市和官道都牵着无量山的风声。",
-    src: "/assets/scene-market.png",
+    src: "/assets/scenes/location-dali.png",
     alt: "大理城场景",
     aliases: ["大理城", "大理", "苍山", "洱海"]
   },
@@ -78,7 +78,7 @@ export const locationSceneVisuals: Record<string, Omit<MessageVisual, "id" | "ki
     title: "无量山",
     subtitle: "山路深曲，草木藏话",
     caption: "山道、石壁与残痕都可能指向一门未成形的武学。",
-    src: "/assets/background-ink.svg",
+    src: "/assets/scenes/location-wuliang.png",
     alt: "无量山场景",
     aliases: ["无量山", "无量", "山道", "石壁"]
   },
@@ -86,7 +86,7 @@ export const locationSceneVisuals: Record<string, Omit<MessageVisual, "id" | "ki
     title: "姑苏",
     subtitle: "水路纵横，世家深院",
     caption: "看似温雅的园林里，藏着更细密的武学与人心。",
-    src: "/assets/scene-palace.png",
+    src: "/assets/scenes/location-gusu.png",
     alt: "姑苏场景",
     aliases: ["姑苏", "燕子坞", "水榭", "藏书楼"]
   },
@@ -94,7 +94,7 @@ export const locationSceneVisuals: Record<string, Omit<MessageVisual, "id" | "ki
     title: "少室山",
     subtitle: "钟声入云，山门森严",
     caption: "正宗门墙之下，试炼常比话语更直接。",
-    src: "/assets/scene-temple.png",
+    src: "/assets/scenes/location-shaoshi.png",
     alt: "少室山场景",
     aliases: ["少室山", "少室", "少林", "山门"]
   },
@@ -102,7 +102,7 @@ export const locationSceneVisuals: Record<string, Omit<MessageVisual, "id" | "ki
     title: "雁门关",
     subtitle: "风沙极硬，旧案未冷",
     caption: "关外每一阵风都像在翻旧账。",
-    src: "/assets/scene-tavern.png",
+    src: "/assets/scenes/location-yanmen.png",
     alt: "雁门关场景",
     aliases: ["雁门关", "雁门", "关外", "边关"]
   },
@@ -110,7 +110,7 @@ export const locationSceneVisuals: Record<string, Omit<MessageVisual, "id" | "ki
     title: "星宿海",
     subtitle: "毒雾与怪笑同起",
     caption: "越靠近这里，越要分清机缘和陷阱。",
-    src: "/assets/scene-brothel.png",
+    src: "/assets/scenes/location-xingxiu.png",
     alt: "星宿海场景",
     aliases: ["星宿海", "星宿", "毒雾"]
   }

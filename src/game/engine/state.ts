@@ -1,4 +1,4 @@
-import { enemyPresets, initialGameState, itemCatalog, martialArtCatalog, originTemplates } from "../../data";
+import { enemyPortraitForArchetype, enemyPresets, initialGameState, itemCatalog, martialArtCatalog, originTemplates } from "../../data";
 import { normalizeChapterStateForNameless } from "../story/namelessWanderer";
 import { abilityModifier, recalculateCharacterDerivedStats } from "../rules";
 import type {
@@ -470,6 +470,7 @@ function makeEnemyCombat(name = "黑衣刺客"): GameState["combat"] {
     enemyPhase: "开场",
     enemyIntent: preset.intent,
     enemyArchetype: preset.archetype,
+    enemyPortrait: preset.portrait || enemyPortraitForArchetype(preset.archetype),
     lastCombatEvent: ""
   };
 }
@@ -497,6 +498,7 @@ function normalizeCombat(combat: GameState["combat"] | undefined): GameState["co
     enemyPhase: combat.enemyPhase || normalized.enemyPhase,
     enemyIntent: combat.enemyIntent || normalized.enemyIntent,
     enemyArchetype: combat.enemyArchetype || normalized.enemyArchetype,
+    enemyPortrait: combat.enemyPortrait || normalized.enemyPortrait,
     lastCombatEvent: combat.lastCombatEvent || normalized.lastCombatEvent,
     combatId: combat.combatId || normalized.combatId,
     round: combat.round ?? normalized.round,

@@ -5,6 +5,7 @@ const rasterPortraitIds = new Set([
   "a-zhu",
   "a-zi",
   "duan-yu",
+  "innkeeper",
   "mu-wanqing",
   "murong-fu",
   "qiao-feng",
@@ -14,7 +15,7 @@ const rasterPortraitIds = new Set([
 ]);
 
 export const portrait = (id: string) => rasterPortraitIds.has(id)
-  ? `./assets/portraits/${id}${id === "shuang-er" ? "-v3" : ""}.png`
+  ? `./assets/portraits/${id}${id === "shuang-er" ? "-v3" : id === "innkeeper" ? "-v2" : ""}.png`
   : `./assets/portraits/${id}.svg`;
 
 export const item = (id: string, name: string, desc: string, count = 1, extra: Partial<Item> = {}): Item => ({
