@@ -12,8 +12,7 @@ export function AppRoot() {
         setCustomName={session.setCustomName}
         selectedOrigin={session.selectedOrigin}
         abilityChoices={session.abilityChoices}
-        abilityAllocation={session.abilityAllocation}
-        setAbilityAllocation={session.setAbilityAllocation}
+        onRollAbilities={session.rollStartingAbilities}
         onStart={session.startOriginGame}
         onContinue={session.canContinue ? session.continueGame : undefined}
       />

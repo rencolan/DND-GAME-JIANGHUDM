@@ -61,10 +61,8 @@ import type {
 import type { ApiTestState, DiceGroup, RollPackage, RollingResult, RollingState } from "./sessionTypes";
 import {
   API_KEY,
-  applyAllocation,
   BGM_KEY,
   BGM_VOLUME_KEY,
-  EMPTY_ROLL_PACKAGE,
   PLAYABLE_ORIGIN_ID,
   SAVE_KEY,
   SFX_KEY,
@@ -422,8 +420,6 @@ export function useGameSession() {
   const [customName, setCustomName] = useState("无名客");
   const [selectedOriginId, setSelectedOriginId] = useState(PLAYABLE_ORIGIN_ID);
   const [abilityChoices, setAbilityChoices] = useState<RollPackage[]>(() => makeSingleAbilityChoice());
-  const [selectedChoiceIndex, setSelectedChoiceIndex] = useState(0);
-  const [abilityAllocation, setAbilityAllocation] = useState<RollPackage>(EMPTY_ROLL_PACKAGE);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<DrawerTab>("character");
   const [input, setInput] = useState("");
@@ -453,12 +449,7 @@ export function useGameSession() {
 
   useEffect(() => {
     setAbilityChoices(makeSingleAbilityChoice());
-    setSelectedChoiceIndex(0);
   }, [selectedOriginId]);
-
-  useEffect(() => {
-    setAbilityAllocation(EMPTY_ROLL_PACKAGE);
-  }, [selectedChoiceIndex, selectedOriginId]);
 
   useEffect(() => {
     localStorage.setItem(SAVE_KEY, JSON.stringify(game));
@@ -877,11 +868,13 @@ export function useGameSession() {
   function resetGame() {
     localStorage.removeItem(SETUP_KEY);
     setAbilityChoices(makeSingleAbilityChoice());
-    setSelectedChoiceIndex(0);
-    setAbilityAllocation(EMPTY_ROLL_PACKAGE);
     setSelectedInventoryMartialId(undefined);
     setSelectedAbilityInfoKey(undefined);
     setGame(normalizeGameState(structuredClone(initialGameState)));
+  }
+
+  function rollStartingAbilities() {
+    setAbilityChoices(makeSingleAbilityChoice());
   }
 
   async function callAi(
@@ -1940,7 +1933,7 @@ export function useGameSession() {
 
   function startOriginGame() {
     const baseChoice = abilityChoices[0] || ([0, 0, 0, 0, 0, 0] as RollPackage);
-    const hero = buildCharacterFromOrigin(customName, selectedOrigin, applyAllocation(baseChoice, abilityAllocation));
+    const hero = buildCharacterFromOrigin(customName, selectedOrigin, baseChoice);
 
     lockUi(1400);
     closePanels();
@@ -2614,10 +2607,6 @@ export function useGameSession() {
     setSelectedOriginId,
     abilityChoices,
     setAbilityChoices,
-    selectedChoiceIndex,
-    setSelectedChoiceIndex,
-    abilityAllocation,
-    setAbilityAllocation,
     drawerOpen,
     setDrawerOpen,
     activeTab,
@@ -2670,6 +2659,7 @@ export function useGameSession() {
     beginTutorialCombat,
     skipTutorial,
     selectedOrigin,
+    rollStartingAbilities,
     startOriginGame,
     openDrawer,
     openPendingCheck,

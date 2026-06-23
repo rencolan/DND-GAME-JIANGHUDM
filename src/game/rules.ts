@@ -1,11 +1,5 @@
 import type { Ability, Character, MartialArt } from "../types";
 
-export const CREATION_STAT_MIN = 6;
-export const CREATION_RANDOM_CAP = 12;
-export const CREATION_STAT_MAX = 15;
-export const CREATION_BASE_TOTAL = 45;
-export const CREATION_FREE_POINTS = 15;
-
 export function abilityModifier(value: number) {
   return Math.floor((value - 10) / 2);
 }

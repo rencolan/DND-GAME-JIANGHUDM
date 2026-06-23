@@ -2974,6 +2974,13 @@ button {
   gap: 12px;
 }
 
+.setup-roll-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
 .setup-build-summary {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
@@ -3022,7 +3029,7 @@ button {
 
 .allocator-controls {
   display: grid;
-  grid-template-columns: 34px minmax(72px, 1fr) 34px;
+  grid-template-columns: 1fr;
   align-items: center;
   gap: 8px;
 }
@@ -3039,6 +3046,16 @@ button {
   width: 34px;
   height: 34px;
   border-radius: 8px;
+}
+
+.secondary-action {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid rgba(242, 212, 141, .28);
+  border-radius: 12px;
+  background: rgba(242, 212, 141, .08);
+  color: var(--gold-2);
+  font-weight: 800;
 }
 
 .allocator-meta {

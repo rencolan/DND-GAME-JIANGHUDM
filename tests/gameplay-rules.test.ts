@@ -6,6 +6,7 @@ import { applyPatchToState, normalizeGameState } from "../src/game/engine";
 import { parseCombatDamageResult } from "../src/game/world/helpers";
 import { resolveWorldAction } from "../src/game/world/resolveWorldAction";
 import { buildLocationOpportunities } from "../src/game/world/opportunities";
+import { makeAbilityChoices } from "../src/ui/sessionShared";
 import type { GameState } from "../src/types";
 
 function cloneState(overrides: Partial<GameState> = {}) {
@@ -57,6 +58,14 @@ test("map travel parser accepts bracketed location names", () => {
 
   assert.equal(result.textId, "travel_depart");
   assert.equal(result.patch.location, "无量山");
+});
+
+test("origin ability rolls use one 4d6-drop-lowest package", () => {
+  const choices = makeAbilityChoices();
+
+  assert.equal(choices.length, 1);
+  assert.equal(choices[0].length, 6);
+  assert.ok(choices[0].every((value) => value >= 3 && value <= 18));
 });
 
 test("exposed and guarded change effective enemy AC", () => {

@@ -1,12 +1,10 @@
 import {
-  CREATION_FREE_POINTS,
   calculateAcFromDex,
   calculateHpFromCon,
   calculateMaxQi
 } from "../../game/rules";
 import type { OriginTemplate } from "../../types";
 import { abilityDefinitions, abilityEffectLabels, abilityLabels } from "../display";
-import { applyAllocation, canAdjustAllocation, remainingAllocationPoints } from "../sessionShared";
 import type { RollPackage } from "../sessionTypes";
 
 type SetupScreenProps = {
@@ -14,8 +12,7 @@ type SetupScreenProps = {
   setCustomName: (value: string) => void;
   selectedOrigin: OriginTemplate;
   abilityChoices: RollPackage[];
-  abilityAllocation: RollPackage;
-  setAbilityAllocation: (value: RollPackage) => void;
+  onRollAbilities: () => void;
   onStart: () => void;
   onContinue?: () => void;
 };
@@ -31,14 +28,12 @@ export function SetupScreen({
   setCustomName,
   selectedOrigin,
   abilityChoices,
-  abilityAllocation,
-  setAbilityAllocation,
+  onRollAbilities,
   onStart,
   onContinue
 }: SetupScreenProps) {
   const baseChoice = abilityChoices[0] || ([0, 0, 0, 0, 0, 0] as RollPackage);
-  const finalChoice = applyAllocation(baseChoice, abilityAllocation);
-  const pointsLeft = remainingAllocationPoints(abilityAllocation);
+  const finalChoice = baseChoice;
   const startingArt = selectedOrigin.martialArts[0];
   const previewStats = {
     hp: calculateHpFromCon(finalChoice[2]),
@@ -47,13 +42,6 @@ export function SetupScreen({
     extBonus: Math.max(0, abilityMod(finalChoice[0])),
     intBonus: Math.max(0, abilityMod(finalChoice[5]))
   };
-
-  function adjustAllocation(index: number, delta: -1 | 1) {
-    if (!canAdjustAllocation(baseChoice, abilityAllocation, index, delta)) return;
-    const next = [...abilityAllocation] as RollPackage;
-    next[index] += delta;
-    setAbilityAllocation(next);
-  }
 
   return (
     <section className="setup-screen">
@@ -111,9 +99,13 @@ export function SetupScreen({
         <section className="setup-main-grid">
           <article className="setup-card setup-build-card">
             <div className="setup-card-header">
-              <span>属性分配</span>
-              <b>剩余 {pointsLeft} / {CREATION_FREE_POINTS}</b>
+              <span>属性投掷</span>
+              <b>4d6 去最低</b>
             </div>
+
+            <p className="setup-roll-note">
+              每项属性由 4d6 掷出，去掉最低一颗，其余三颗相加。没有开局上限限制。
+            </p>
 
             <div className="setup-build-summary">
               <span>生命 {previewStats.hp}</span>
@@ -128,32 +120,20 @@ export function SetupScreen({
               {abilityOrder.map((key, index) => (
                 <article key={key}>
                   <div className="allocator-controls">
-                    <button
-                      type="button"
-                      onClick={() => adjustAllocation(index, -1)}
-                      disabled={!canAdjustAllocation(baseChoice, abilityAllocation, index, -1)}
-                    >
-                      -
-                    </button>
-
                     <strong>{abilityLabels[key]} {finalChoice[index]}</strong>
-
-                    <button
-                      type="button"
-                      onClick={() => adjustAllocation(index, 1)}
-                      disabled={!canAdjustAllocation(baseChoice, abilityAllocation, index, 1)}
-                    >
-                      +
-                    </button>
                   </div>
 
                   <div className="allocator-meta">
-                    <small>底 {baseChoice[index]} · {abilityEffectLabels[key]}</small>
+                    <small>4d6 去最低 · {abilityEffectLabels[key]}</small>
                     <span>修正 {abilityMod(finalChoice[index]) >= 0 ? "+" : ""}{abilityMod(finalChoice[index])}</span>
                   </div>
                 </article>
               ))}
             </div>
+
+            <button className="secondary-action" type="button" onClick={onRollAbilities}>
+              重新投掷六项属性
+            </button>
           </article>
         </section>
 
