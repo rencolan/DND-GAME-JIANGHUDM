@@ -1,8 +1,11 @@
 import { Loader2 } from "lucide-react";
-import type { MutableRefObject, ReactNode } from "react";
+import { useMemo, useState, type MutableRefObject, type ReactNode } from "react";
 import type { Message } from "../../types";
+import { buildLoreEntities } from "../lore/loreEntityRegistry";
+import type { LoreEntity } from "../lore/types";
 import { resolveMessageSpeakerVisual, resolveMessageVisuals } from "../visuals/messageVisualResolver";
 import type { MessageVisualContext } from "../visuals/types";
+import { LoreEntityModal } from "./LoreEntityModal";
 import { MessageBubble } from "./MessageBubble";
 
 type ChatLogProps = {
@@ -14,6 +17,8 @@ type ChatLogProps = {
 };
 
 export function ChatLog({ messages, busy, endRef, visualContext, children }: ChatLogProps) {
+  const [selectedLoreEntity, setSelectedLoreEntity] = useState<LoreEntity | undefined>();
+  const loreEntities = useMemo(() => visualContext ? buildLoreEntities(visualContext) : [], [visualContext]);
   const seenVisualIds = new Set<string>();
 
   return (
@@ -35,6 +40,8 @@ export function ChatLog({ messages, busy, endRef, visualContext, children }: Cha
             message={message}
             visuals={firstAppearanceVisuals}
             speakerVisual={compactSpeakerVisual}
+            loreEntities={loreEntities}
+            onOpenLoreEntity={setSelectedLoreEntity}
           />
         );
       })}
@@ -47,6 +54,7 @@ export function ChatLog({ messages, busy, endRef, visualContext, children }: Cha
       )}
 
       <div ref={endRef} />
+      <LoreEntityModal entity={selectedLoreEntity} onClose={() => setSelectedLoreEntity(undefined)} />
     </section>
   );
 }

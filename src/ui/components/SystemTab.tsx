@@ -77,6 +77,20 @@ export function SystemTab({
   const [selectedEnemyName, setSelectedEnemyName] = useState(enemyPresets[0]?.name || "");
   const [selectedArtId, setSelectedArtId] = useState(martialArtCatalog[0]?.id || "");
   const [selectedInternalArtId, setSelectedInternalArtId] = useState(internalArts[0]?.id || "");
+  const [devUnlockClicks, setDevUnlockClicks] = useState(0);
+  const [devPanelUnlocked, setDevPanelUnlocked] = useState(false);
+
+  function handleDevUnlockClick() {
+    if (devPanelUnlocked) return;
+    setDevUnlockClicks((current) => {
+      const next = current + 1;
+      if (next >= 7) {
+        setDevPanelUnlocked(true);
+        return 0;
+      }
+      return next;
+    });
+  }
 
   const registryRows = studySourceRegistry.map((route) => {
     const learned = route.artId ? game.character.martialArts.some((art) => art.id === route.artId) : false;
@@ -141,7 +155,7 @@ export function SystemTab({
     <section className="system-panel">
       <article className="system-section">
         <header>
-          <b>接口设置</b>
+          <b className="hidden-dev-trigger" onClick={handleDevUnlockClick}>接口设置</b>
         </header>
 
         <label>
@@ -277,6 +291,7 @@ export function SystemTab({
         </section>
       </article>
 
+      {devPanelUnlocked && (
       <article className="system-section">
         <header>
           <b>开发面板</b>
@@ -447,6 +462,7 @@ export function SystemTab({
           </div>
         </section>
       </article>
+      )}
     </section>
   );
 }
