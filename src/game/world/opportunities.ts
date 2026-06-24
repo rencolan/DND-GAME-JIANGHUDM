@@ -43,6 +43,19 @@ function routeStage(state: GameState, routeId: string) {
   return state.relationshipRoutes[routeId]?.stage;
 }
 
+function shuangErDisplayName(state: GameState) {
+  const shuangEr = state.npcs.find((npc) => npc.id === "shuang-er");
+  return shuangEr && (shuangEr.discovered || !shuangEr.hidden) ? "双儿" : "客栈丫鬟";
+}
+
+function applyNpcAlias(text: string, state: GameState) {
+  return text.split("双儿").join(shuangErDisplayName(state));
+}
+
+function applyNpcAliasOptional(text: string | undefined, state: GameState) {
+  return text ? applyNpcAlias(text, state) : undefined;
+}
+
 function missingArt(state: GameState, artId: string, label: string) {
   return hasArt(state, artId) ? undefined : `需要先掌握 ${label}`;
 }
@@ -335,15 +348,15 @@ export function buildLocationOpportunities(state: GameState): LocationOpportunit
     .map((spec) => ({
       id: spec.id,
       title: spec.title,
-      text: spec.text,
-      actionText: spec.actionText,
+      text: applyNpcAlias(spec.text, state),
+      actionText: applyNpcAlias(spec.actionText, state),
       category: spec.category,
       risk: spec.risk,
-      reward: spec.reward,
-      failure: spec.failure,
+      reward: applyNpcAlias(spec.reward, state),
+      failure: applyNpcAlias(spec.failure, state),
       checkAbility: spec.checkAbility,
       timeCost: spec.timeCost,
-      requirement: spec.requirement,
+      requirement: applyNpcAliasOptional(spec.requirement, state),
       disabledReason: spec.disabledReason?.(state)
     }));
 }

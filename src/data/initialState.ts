@@ -107,7 +107,7 @@ export const initialGameState: GameState = {
   economy: buildInitialEconomyState(),
   objective: {
     title: "入局引导",
-    text: "先在客栈落脚，看看掌柜、双儿和无量山的风声。",
+    text: "先在客栈落脚，看看掌柜、客栈丫鬟和无量山的风声。",
     location: "大理城"
   }
 };

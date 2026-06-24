@@ -120,6 +120,14 @@ const SHUANGER_PRACTICE_KEYWORDS = ["练武", "练功", "切磋", "喂招", "短
 const SHUANGER_TALK_KEYWORDS = ["谈心", "说话", "聊天", "家常", "问她", "陪她"];
 const SHUANGER_HOUSEKEEPING_KEYWORDS = ["整理行囊", "收拾行囊", "备药", "针线", "药囊", "内务", "盘点"];
 
+const SHUANGER_HIDDEN_ALIASES = ["客栈丫鬟", "后院丫鬟", "那丫鬟", "那个丫鬟"];
+const SHUANGER_REVEAL_KEYWORDS = ["名字", "姓名", "叫什么", "怎么称呼", "称呼", "介绍", "引见"];
+
+function isShuangErDiscovered(state: GameState) {
+  const shuangEr = state.npcs.find((npc) => npc.id === "shuang-er");
+  return Boolean(shuangEr && (shuangEr.discovered || !shuangEr.hidden));
+}
+
 function withWorldPatch(state: GameState, globalUpdate: boolean, ...patches: Array<GamePatch | undefined>): GamePatch {
   return mergeGamePatches(advanceWorldLocally(state, globalUpdate), ...patches);
 }
@@ -336,6 +344,40 @@ function maybeHandleRecoveryOrTraining(
   }
 
   return undefined;
+}
+
+function maybeRevealShuangEr(
+  state: GameState,
+  action: string,
+  globalUpdate: boolean,
+  firstActionPatch?: GamePatch
+): WorldResolution | undefined {
+  if (state.combat.active || isShuangErDiscovered(state)) return undefined;
+
+  const asksHerName = includesAny(action, SHUANGER_HIDDEN_ALIASES) && includesAny(action, SHUANGER_REVEAL_KEYWORDS);
+  const asksInnkeeperToIntroduce =
+    includesAny(action, ["掌柜"])
+    && includesAny(action, ["介绍", "引见", "叫什么", "名字", "称呼"])
+    && includesAny(action, ["丫鬟", "客栈丫鬟", "后院"]);
+
+  if (!asksHerName && !asksInnkeeperToIntroduce) return undefined;
+
+  const patch: GamePatch = {
+    npcUpdates: [
+      { name: "双儿", hidden: false, discovered: true, status: "在客栈帮忙，手边常备针线药囊" }
+    ],
+    npcStoryUpdates: [
+      { name: "双儿", state: "revealed" }
+    ],
+    systemNote: "掌柜见你问起，才朝后院那位安静做事的丫鬟点了点头：她叫双儿。她只轻轻应了一声，便把你的样子记在了心里。"
+  };
+
+  return {
+    textId: "default_scene",
+    patch: withWorldPatch(state, globalUpdate, firstActionPatch, patch),
+    meta: { targetName: "双儿", locationName: currentLocationName(state) },
+    textOverride: patch.systemNote
+  };
 }
 
 function maybeStartMainlineChecks(state: GameState, action: string, globalUpdate: boolean, firstActionPatch?: GamePatch): WorldResolution | undefined {
@@ -636,6 +678,9 @@ export function resolveWorldAction(
   const firstActionPatch = namelessStory
     ? resolveNamelessStoryTrigger(state, { kind: "first_action" })
     : buildOriginOpeningPatch(state);
+
+  const shuangErReveal = maybeRevealShuangEr(state, action, globalUpdate, firstActionPatch);
+  if (shuangErReveal) return shuangErReveal;
 
   const npcSupport = maybeUseNpcSupport(state, action, globalUpdate, firstActionPatch);
   if (npcSupport) return npcSupport;

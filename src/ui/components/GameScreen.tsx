@@ -405,6 +405,39 @@ export function GameScreen({ session }: GameScreenProps) {
         )}
       </ChatLog>
 
+      {isDead && (
+        <section className="death-hud">
+          <div className="death-hud-card">
+            <div>
+              <span>死亡结算</span>
+              <b>你已死亡</b>
+              <small>普通行动已锁定。请选择回退、重开，或打开系统面板导入旧档。</small>
+            </div>
+            <div className="death-hud-actions">
+              <button type="button" onClick={restoreCombatCheckpoint} disabled={busy || !canRestoreCombatCheckpoint}>
+                回到战前
+              </button>
+              <button type="button" onClick={restoreActionCheckpoint} disabled={busy || !canRestoreActionCheckpoint}>
+                回到行动前
+              </button>
+              <button type="button" onClick={resetGame} disabled={busy}>
+                重开
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab("system");
+                  openDrawer();
+                }}
+                disabled={busy}
+              >
+                系统
+              </button>
+            </div>
+          </div>
+        </section>
+      )}
+
       {!isDead && hudState && (
         <section className="action-hud">
           <div className={`action-hud-card ${hudState.kind}`}>

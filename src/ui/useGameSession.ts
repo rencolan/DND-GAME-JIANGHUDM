@@ -3,6 +3,7 @@ import {
   aiProposalsToLocalPatch,
   filterAiCombatPatch,
   inferSceneType,
+  looksLikeReasoningTrace,
   readApiErrorSummary,
   resolveApiEndpoint,
   splitAiPayload,
@@ -1177,7 +1178,7 @@ export function useGameSession() {
     }
 
     return {
-      text: visibleText || fallbackText || fallbackNarration,
+      text: visibleText && !looksLikeReasoningTrace(visibleText) ? visibleText : (fallbackText || fallbackNarration),
       patch,
       proposals
     };
@@ -1188,7 +1189,7 @@ export function useGameSession() {
       const aiResult = await callAi(step.state, step.actionText, step.prompt, step.fallbackText, {
         systemPrompt: buildCombatNarrationSystemPrompt(),
         historyLimit: 0,
-        maxTokens: 2000,
+        maxTokens: 700,
         temperature: 0.55
       });
       return {
@@ -1318,7 +1319,7 @@ export function useGameSession() {
         systemPrompt: buildCombatIntentSystemPrompt(),
         historyLimit: 2,
         historyChars: 180,
-        maxTokens: 2000,
+        maxTokens: 900,
         temperature: 0.45
       });
       const resolvedCheck = buildCombatEscapeCheck(actionState, text, aiResult.proposals.proposedCheck) || fallbackCheck;
@@ -1675,7 +1676,7 @@ export function useGameSession() {
           systemPrompt: buildCombatIntentSystemPrompt(),
           historyLimit: 2,
           historyChars: 180,
-          maxTokens: 2000,
+          maxTokens: 900,
           temperature: 0.55
         }
         : undefined);

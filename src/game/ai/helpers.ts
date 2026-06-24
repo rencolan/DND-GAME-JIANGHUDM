@@ -141,7 +141,15 @@ export function inferSceneType(text: string): SceneType | undefined {
 
 export function stripThinkingBlocks(text: string) {
   const complete = text.replace(/<think\b[^>]*>[\s\S]*?<\/think>/gi, "");
-  return complete.replace(/<think\b[^>]*>[\s\S]*$/gi, "").trim();
+  const withoutOpenThink = complete.replace(/<think\b[^>]*>[\s\S]*$/gi, "");
+  return withoutOpenThink
+    .replace(/\*\*(Analyze the Request|Analysis|Thinking Process|Reasoning|Plan|Wait, looking closer)[\s\S]*$/i, "")
+    .trim();
+}
+
+export function looksLikeReasoningTrace(text: string) {
+  return /\*\*(Analyze the Request|Analysis|Thinking Process|Reasoning|Instruction Priority|Wait, looking closer)/i.test(text)
+    || /(^|\n)\s*(Role|Task|Constraints|Fact|Instruction Priority):/i.test(text);
 }
 
 export function stripJsonBlock(text: string) {

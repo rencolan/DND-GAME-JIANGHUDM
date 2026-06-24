@@ -173,7 +173,7 @@ NPC=${compactNpcSummary(state, globalUpdate)}
 }
 
 export function buildCombatNarrationSystemPrompt() {
-  return `你只写战斗播报。严格按用户给出的事实写，不改命中、伤害、HP、状态、回合。中文 1-2 句，外在动作和气势为主，不提 d20/DC/计算，不替玩家决定。末尾必须输出：
+  return `你只写最终战斗播报，不分析请求，不列 Role/Task/Constraints/Fact，不解释规则。严格按用户给出的事实写，不改命中、伤害、HP、状态、回合。中文 1-2 句，外在动作和气势为主，不提 d20/DC/计算，不替玩家决定。末尾必须输出：
 \`\`\`json
 {}
 \`\`\``;

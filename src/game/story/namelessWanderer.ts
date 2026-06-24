@@ -28,7 +28,7 @@ const CHOICE_DECLINE_SHUANGER = "decline_shuang_er";
 
 const openingObjective: ObjectiveHint = {
   title: "入局引导",
-  text: "先在客栈落脚，看看掌柜、双儿和无量山的风声。",
+  text: "先在客栈落脚，看看掌柜、客栈丫鬟和无量山的风声。",
   location: "大理城"
 };
 
@@ -66,11 +66,11 @@ const mainQuestBlueprints: Record<string, MainQuestBlueprint> = {
   [QUEST_WANDERER_1]: {
     id: QUEST_WANDERER_1,
     questTitle: "客栈歇脚",
-    questText: "你原本只想在大理客栈歇一晚脚，却发现掌柜、双儿和往来旅人都在盯着无量山的风声。先在客栈站稳脚跟，弄清这间客栈为何像在等一场将至的麻烦。",
+    questText: "你原本只想在大理客栈歇一晚脚，却发现掌柜、客栈丫鬟和往来旅人都在盯着无量山的风声。先在客栈站稳脚跟，弄清这间客栈为何像在等一场将至的麻烦。",
     objectiveTitle: "先在客栈落脚",
-    objectiveText: "和掌柜、双儿接触，看看柜台、后院与来客之间流动的消息，确认无量山的传闻究竟牵动了谁。",
+    objectiveText: "和掌柜、客栈丫鬟接触，看看柜台、后院与来客之间流动的消息，确认无量山的传闻究竟牵动了谁。",
     location: "大理城",
-    npc: "双儿",
+    npc: "客栈丫鬟",
     stage: "first_assignment"
   },
   [QUEST_WANDERER_2]: {
@@ -373,6 +373,12 @@ function resolveQuestResolved(state: GameState, questId: string): GamePatch | un
       relationshipChanges: [
         { name: "双儿", delta: 8, attitude: "信任" }
       ],
+      npcUpdates: [
+        { name: "双儿", hidden: false, discovered: true, status: "在客栈帮忙，手边常备针线药囊" }
+      ],
+      npcStoryUpdates: [
+        { name: "双儿", state: "revealed" }
+      ],
       relationshipRouteUpdates: [
         {
           npcId: ROUTE_SHUANGER,
@@ -389,7 +395,7 @@ function resolveQuestResolved(state: GameState, questId: string): GamePatch | un
         stageFlag("track_shadow")
       ],
       chapterStateUpdate: setChapterStage("track_shadow"),
-      systemNote: "客栈这边暂时稳住了。下一步该顺着风声去无量山，看看那场骚动和你刚落脚的地方到底有没有直接关系。"
+      systemNote: "客栈这边暂时稳住了。掌柜这才把后院那个安静做事的丫鬟介绍给你：她叫双儿。下一步该顺着风声去无量山，看看那场骚动和你刚落脚的地方到底有没有直接关系。"
     };
 
     return withStudyRewards(state, patch, ["dali-heart-manual", "renxue-shou-inn", "jianghu-daolu-inn"], { force: true });
@@ -575,7 +581,7 @@ function resolveStoryCheckRequested(state: GameState, checkId: StoryCheckId): Ga
       12,
       "cha",
       "前堂后院都乱成一团，你得让闹事的人闭嘴，也让店里的人重新各归其位。",
-      "若失败，掌柜会看轻你，双儿也会替你担心。",
+      "若失败，掌柜会看轻你，客栈丫鬟也会替你担心。",
       "可以硬压场面，也可以借机说服、喝住或拆开闹事的人。"
     );
   }
