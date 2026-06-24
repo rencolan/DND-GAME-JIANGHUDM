@@ -69,7 +69,7 @@ Object.assign(abilityDefinitions, {
   },
   int: {
     title: "悟性",
-    text: "主打拆招、认穴、推演与技法型武学。演练招式、琢磨门路、以巧破招，都靠悟性。"
+    text: "主打拆招、认穴、机关账册、文字暗号与逻辑推演。演练招式、琢磨门路、以巧破招，都靠悟性。"
   },
   cha: {
     title: "气运",
@@ -77,7 +77,7 @@ Object.assign(abilityDefinitions, {
   },
   wis: {
     title: "心境",
-    text: "主打内力、调息、疗伤、内功运转与内伤施压。心境稳，真气才稳，内家路数也才站得住。"
+    text: "主打内力、调息、疗伤、感知异样、观察足迹与听声辨位。心境稳，真气才稳，也更能察觉环境里的细微不对。"
   }
 });
 
@@ -85,9 +85,9 @@ Object.assign(abilityEffectLabels, {
   str: "重手外功 / 破门压制",
   dex: "先手 / 闪避 / 护甲",
   con: "生命 / 抗压 / 内伤抗性",
-  int: "拆招 / 认穴 / 技法武学",
+  int: "机关账册 / 拆招 / 推演",
   cha: "讲价 / 交涉 / 关系收益",
-  wis: "内力 / 调息 / 内功伤势"
+  wis: "感知足迹 / 调息 / 内功"
 });
 
 export const sceneAssets: Record<SceneType, string> = {

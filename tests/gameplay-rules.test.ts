@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { initialGameState, martialArtCatalog } from "../src/data";
 import { availableEnemyArts, adjustedArtWeight, effectiveEnemyAc, resolveCombatDamage, resolveEnemyPhase, startCombat } from "../src/game/combat";
 import { applyPatchToState, normalizeGameState } from "../src/game/engine";
-import { parseCombatDamageResult } from "../src/game/world/helpers";
+import { buildSuggestedCheck, normalizeWorldCheckAbility, parseCombatDamageResult } from "../src/game/world/helpers";
 import { resolveWorldAction } from "../src/game/world/resolveWorldAction";
 import { buildLocationOpportunities } from "../src/game/world/opportunities";
 import { makeAbilityChoices } from "../src/ui/sessionShared";
@@ -66,6 +66,37 @@ test("origin ability rolls use one 4d6-drop-lowest package", () => {
   assert.equal(choices.length, 1);
   assert.equal(choices[0].length, 6);
   assert.ok(choices[0].every((value) => value >= 3 && value <= 18));
+});
+
+test("world perception checks use wisdom for tracks and subtle traces", () => {
+  const check = buildSuggestedCheck("查看足迹，分辨那人往哪里去了");
+
+  assert.equal(check?.abilityKey, "wis");
+  assert.equal(check?.kind, "world");
+});
+
+test("world actions create a pending wisdom check for inspecting tracks", () => {
+  const result = resolveWorldAction("查看足迹，分辨那人往哪里去了", cloneState(), false);
+
+  assert.equal(result.textId, "suggested_check");
+  assert.equal(result.patch.pendingCheck?.abilityKey, "wis");
+  assert.equal(result.patch.pendingCheck?.dc, 12);
+});
+
+test("world intellect checks stay on intelligence for ledgers and mechanisms", () => {
+  assert.equal(buildSuggestedCheck("查看账本上的暗号")?.abilityKey, "int");
+  assert.equal(buildSuggestedCheck("查验机关和地图")?.abilityKey, "int");
+});
+
+test("ai proposed world checks are normalized by local action intent", () => {
+  const normalized = normalizeWorldCheckAbility("查看泥地里的鞋印", {
+    label: "查看鞋印",
+    abilityKey: "int",
+    dc: 12,
+    reason: "AI suggested the wrong attribute."
+  });
+
+  assert.equal(normalized?.abilityKey, "wis");
 });
 
 test("exposed and guarded change effective enemy AC", () => {

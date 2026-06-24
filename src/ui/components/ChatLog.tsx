@@ -16,35 +16,45 @@ type ChatLogProps = {
   children?: ReactNode;
 };
 
+const MAX_VISIBLE_MESSAGES = 120;
+
 export function ChatLog({ messages, busy, endRef, visualContext, children }: ChatLogProps) {
   const [selectedLoreEntity, setSelectedLoreEntity] = useState<LoreEntity | undefined>();
   const loreEntities = useMemo(() => visualContext ? buildLoreEntities(visualContext) : [], [visualContext]);
   const seenVisualIds = new Set<string>();
+  const visibleStart = Math.max(0, messages.length - MAX_VISIBLE_MESSAGES);
+  const renderedMessages: ReactNode[] = [];
+
+  messages.forEach((message, index) => {
+    const visuals = visualContext ? resolveMessageVisuals(message, visualContext) : [];
+    const firstAppearanceVisuals = visuals.filter((visual) => !seenVisualIds.has(visual.id));
+    visuals.forEach((visual) => seenVisualIds.add(visual.id));
+
+    if (index < visibleStart) {
+      return;
+    }
+
+    const speakerVisual = visualContext ? resolveMessageSpeakerVisual(message, visualContext) : undefined;
+    const compactSpeakerVisual = speakerVisual && firstAppearanceVisuals.length === 0 && seenVisualIds.has(speakerVisual.id)
+      ? speakerVisual
+      : undefined;
+
+    renderedMessages.push(
+      <MessageBubble
+        key={message.id}
+        message={message}
+        visuals={firstAppearanceVisuals}
+        speakerVisual={compactSpeakerVisual}
+        loreEntities={loreEntities}
+        onOpenLoreEntity={setSelectedLoreEntity}
+      />
+    );
+  });
 
   return (
     <section className="chat">
       {children}
-      {messages.map((message) => {
-        const visuals = visualContext ? resolveMessageVisuals(message, visualContext) : [];
-        const firstAppearanceVisuals = visuals.filter((visual) => !seenVisualIds.has(visual.id));
-        visuals.forEach((visual) => seenVisualIds.add(visual.id));
-
-        const speakerVisual = visualContext ? resolveMessageSpeakerVisual(message, visualContext) : undefined;
-        const compactSpeakerVisual = speakerVisual && firstAppearanceVisuals.length === 0 && seenVisualIds.has(speakerVisual.id)
-          ? speakerVisual
-          : undefined;
-
-        return (
-          <MessageBubble
-            key={message.id}
-            message={message}
-            visuals={firstAppearanceVisuals}
-            speakerVisual={compactSpeakerVisual}
-            loreEntities={loreEntities}
-            onOpenLoreEntity={setSelectedLoreEntity}
-          />
-        );
-      })}
+      {renderedMessages}
 
       {busy && (
         <article className="message dm loading">

@@ -37,7 +37,13 @@ import {
   resolveInnerInjuryDelta
 } from "../game/rules";
 import { isEconomyTextId, tryResolveEconomyAction } from "../game/world/economySystem";
-import { buildCombatEscapePromptText, isEscapeCombatAction, parseCombatDamageResult, parseCombatHitResult } from "../game/world/helpers";
+import {
+  buildCombatEscapePromptText,
+  isEscapeCombatAction,
+  normalizeWorldCheckAbility,
+  parseCombatDamageResult,
+  parseCombatHitResult
+} from "../game/world/helpers";
 import { initialGameState, martialArtCatalog, originTemplates } from "../data";
 import {
   buildNamelessTutorialBackground,
@@ -66,6 +72,7 @@ import type {
   StudySourceState
 } from "../types";
 import type { ApiTestState, DiceGroup, RollPackage, RollingResult, RollingState } from "./sessionTypes";
+import { deletePersistentValue, readPersistentValue, supportsPersistentIndexedDb, writePersistentValue } from "./persistentStore";
 import {
   API_KEY,
   BGM_KEY,
@@ -133,6 +140,10 @@ type EnemyTurnSummaryDetails = {
 
 const COMBAT_CHECKPOINT_KEY = "jianghu-dm-combat-checkpoint-v1";
 const ACTION_CHECKPOINT_KEY = "jianghu-dm-action-checkpoint-v1";
+const MAX_PERSISTED_MESSAGES = 120;
+const MAX_PERSISTED_SYSTEM_LOG = 120;
+const MAX_CHECKPOINT_MESSAGES = 80;
+const MAX_CHECKPOINT_SYSTEM_LOG = 80;
 
 const combatSceneLabels: Record<GameState["sceneType"], string> = {
   temple: "寺院",
@@ -145,6 +156,22 @@ const combatSceneLabels: Record<GameState["sceneType"], string> = {
 
 function uid(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+}
+
+function trimMessages(messages: Message[], limit: number) {
+  return messages.length > limit ? messages.slice(-limit) : messages;
+}
+
+function trimSystemLog(entries: string[], limit: number) {
+  return entries.length > limit ? entries.slice(-limit) : entries;
+}
+
+function trimStateHistory(state: GameState, options: { messages: number; systemLog: number }) {
+  return {
+    ...state,
+    messages: trimMessages(state.messages, options.messages),
+    systemLog: trimSystemLog(state.systemLog || [], options.systemLog)
+  };
 }
 
 function currentLocationName(state: GameState) {
@@ -344,6 +371,34 @@ function formatRollModeText(mode: PendingCheck["rollMode"], faceResults: number[
   return "常规";
 }
 
+function rollModeInstruction(mode?: PendingCheck["rollMode"]) {
+  if (mode === "advantage") return "优势，掷 2d20 取高";
+  if (mode === "disadvantage") return "劣势，掷 2d20 取低";
+  return "常规，掷 1d20";
+}
+
+function buildPendingCheckInstruction(state: GameState, check?: PendingCheck) {
+  if (!check) return "";
+
+  const abilityLabel = state.character.abilities.find((ability) => ability.key === check.abilityKey)?.label
+    || check.abilityKey
+    || "对应属性";
+  const lines = [
+    `【判定】${check.label}`,
+    `请进行 ${abilityLabel} 判定，DC ${check.dc}；${rollModeInstruction(check.rollMode)}。`,
+    check.reason ? `理由：${check.reason}` : undefined,
+    check.risk ? `失败风险：${check.risk}` : undefined
+  ].filter(Boolean);
+
+  return lines.join("\n");
+}
+
+function appendNewPendingCheckInstruction(text: string, before: GameState, after: GameState) {
+  if (before.pendingCheck || !after.pendingCheck || after.combat.active) return text;
+  const instruction = buildPendingCheckInstruction(after, after.pendingCheck);
+  return instruction ? `${text}\n\n${instruction}` : text;
+}
+
 function includesAny(text: string, keywords: string[]) {
   return keywords.some((keyword) => text.includes(keyword));
 }
@@ -440,20 +495,18 @@ function compactAiHistoryText(text: string, maxChars: number) {
 }
 
 function writeStateCheckpoint(key: string, state: GameState) {
-  localStorage.setItem(key, JSON.stringify(state));
+  void writePersistentValue(key, trimStateHistory(state, {
+    messages: MAX_CHECKPOINT_MESSAGES,
+    systemLog: MAX_CHECKPOINT_SYSTEM_LOG
+  }));
 }
 
-function readStateCheckpoint(key: string) {
-  return readJson<GameState | undefined>(key, undefined);
+async function readStateCheckpoint(key: string) {
+  return readPersistentValue<GameState>(key);
 }
 
 function clearStateCheckpoint(key: string) {
-  localStorage.removeItem(key);
-}
-
-function clearDeathCheckpoints() {
-  clearStateCheckpoint(COMBAT_CHECKPOINT_KEY);
-  clearStateCheckpoint(ACTION_CHECKPOINT_KEY);
+  void deletePersistentValue(key);
 }
 
 function tryResolveDeathRescue(_state: GameState, _cause: string): GamePatch | undefined {
@@ -573,6 +626,7 @@ export function useGameSession() {
   const initialApi = readJson<ApiConfig>(API_KEY, defaultApiConfig("openai"));
 
   const [game, setGame] = useState<GameState>(() => normalizeGameState(savedGame));
+  const [storageHydrated, setStorageHydrated] = useState(false);
   const [api, setApi] = useState<ApiConfig>(() => normalizeApiConfig(initialApi));
   const [customName, setCustomName] = useState("无名客");
   const [selectedOriginId, setSelectedOriginId] = useState(PLAYABLE_ORIGIN_ID);
@@ -593,6 +647,8 @@ export function useGameSession() {
   const [sfxEnabled, setSfxEnabled] = useState(() => readJson<boolean>(SFX_KEY, true));
   const [sfxVolume, setSfxVolume] = useState(() => clamp(readJson<number>(SFX_VOLUME_KEY, 56), 0, 100));
   const [uiLocked, setUiLocked] = useState(false);
+  const [canRestoreCombatCheckpoint, setCanRestoreCombatCheckpoint] = useState(false);
+  const [canRestoreActionCheckpoint, setCanRestoreActionCheckpoint] = useState(false);
 
   const endRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -601,18 +657,85 @@ export function useGameSession() {
   const uiLockTimerRef = useRef<number | null>(null);
   const rollCompletionRef = useRef<((result: RollingResult) => void) | null>(null);
 
-  const canContinue = Boolean(readJson<GameState>(SAVE_KEY, initialGameState).setupComplete);
-  const canRestoreCombatCheckpoint = Boolean(readStateCheckpoint(COMBAT_CHECKPOINT_KEY));
-  const canRestoreActionCheckpoint = Boolean(readStateCheckpoint(ACTION_CHECKPOINT_KEY));
+  const canContinue = game.setupComplete;
   const selectedOrigin = originTemplates.find((origin) => origin.id === selectedOriginId) || originTemplates[0];
+
+  function setCheckpointAvailable(key: string, available: boolean) {
+    if (key === COMBAT_CHECKPOINT_KEY) {
+      setCanRestoreCombatCheckpoint(available);
+      return;
+    }
+    if (key === ACTION_CHECKPOINT_KEY) {
+      setCanRestoreActionCheckpoint(available);
+    }
+  }
+
+  function saveCheckpoint(key: string, state: GameState) {
+    writeStateCheckpoint(key, state);
+    setCheckpointAvailable(key, true);
+  }
+
+  function removeCheckpoint(key: string) {
+    clearStateCheckpoint(key);
+    setCheckpointAvailable(key, false);
+  }
 
   useEffect(() => {
     setAbilityChoices(makeEmptyAbilityChoice());
   }, [selectedOriginId]);
 
   useEffect(() => {
-    localStorage.setItem(SAVE_KEY, JSON.stringify(game));
-  }, [game]);
+    let cancelled = false;
+
+    void (async () => {
+      const [storedGame, combatCheckpoint, actionCheckpoint] = await Promise.all([
+        readPersistentValue<GameState>(SAVE_KEY),
+        readStateCheckpoint(COMBAT_CHECKPOINT_KEY),
+        readStateCheckpoint(ACTION_CHECKPOINT_KEY)
+      ]);
+
+      if (cancelled) return;
+
+      if (storedGame) {
+        setGame(normalizeGameState(storedGame));
+      } else if (localStorage.getItem(SAVE_KEY)) {
+        await writePersistentValue(SAVE_KEY, trimStateHistory(normalizeGameState(savedGame), {
+          messages: MAX_PERSISTED_MESSAGES,
+          systemLog: MAX_PERSISTED_SYSTEM_LOG
+        }));
+        if (supportsPersistentIndexedDb()) {
+          localStorage.removeItem(SAVE_KEY);
+        }
+      }
+
+      setCanRestoreCombatCheckpoint(Boolean(combatCheckpoint));
+      setCanRestoreActionCheckpoint(Boolean(actionCheckpoint));
+      setStorageHydrated(true);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!storageHydrated) return;
+
+    const persistTimer = window.setTimeout(() => {
+      void writePersistentValue(SAVE_KEY, trimStateHistory(normalizeGameState(game), {
+        messages: MAX_PERSISTED_MESSAGES,
+        systemLog: MAX_PERSISTED_SYSTEM_LOG
+      })).then(() => {
+        if (supportsPersistentIndexedDb()) {
+          localStorage.removeItem(SAVE_KEY);
+        }
+      });
+    }, 220);
+
+    return () => {
+      window.clearTimeout(persistTimer);
+    };
+  }, [game, storageHydrated]);
 
   useEffect(() => {
     localStorage.setItem(API_KEY, JSON.stringify(api));
@@ -718,7 +841,7 @@ export function useGameSession() {
     }
 
     if (!baseState.combat.active && finalState.combat.active && baseState.character.hp > 0) {
-      writeStateCheckpoint(COMBAT_CHECKPOINT_KEY, baseState);
+      saveCheckpoint(COMBAT_CHECKPOINT_KEY, baseState);
     }
 
     const combatSettlement = buildCombatSettlementText(baseState, finalState);
@@ -734,7 +857,7 @@ export function useGameSession() {
     messages.push(...deathOutcome.messages);
 
     if (baseState.combat.active && !deathOutcome.state.combat.active && deathOutcome.state.character.hp > 0) {
-      clearStateCheckpoint(COMBAT_CHECKPOINT_KEY);
+      removeCheckpoint(COMBAT_CHECKPOINT_KEY);
     }
 
     return { state: deathOutcome.state, messages };
@@ -742,7 +865,7 @@ export function useGameSession() {
 
   function advanceFormalState(baseState: GameState) {
     if (baseState.character.hp > 0) {
-      writeStateCheckpoint(ACTION_CHECKPOINT_KEY, baseState);
+      saveCheckpoint(ACTION_CHECKPOINT_KEY, baseState);
     }
     const time = advanceTime(baseState);
     return normalizeGameState({
@@ -796,7 +919,7 @@ export function useGameSession() {
   function devStartCombat(enemyName: string) {
     setGame((prev) => applyDevPatch(
       (() => {
-        writeStateCheckpoint(COMBAT_CHECKPOINT_KEY, prev);
+        saveCheckpoint(COMBAT_CHECKPOINT_KEY, prev);
         return prev;
       })(),
       startCombat(prev, enemyName, {
@@ -809,7 +932,7 @@ export function useGameSession() {
   }
 
   function devEndCombat() {
-    clearStateCheckpoint(COMBAT_CHECKPOINT_KEY);
+    removeCheckpoint(COMBAT_CHECKPOINT_KEY);
     setGame((prev) => applyDevPatch(
       prev,
       {
@@ -1053,21 +1176,23 @@ export function useGameSession() {
 
   function resetGame() {
     localStorage.removeItem(SETUP_KEY);
-    clearDeathCheckpoints();
+    removeCheckpoint(COMBAT_CHECKPOINT_KEY);
+    removeCheckpoint(ACTION_CHECKPOINT_KEY);
+    void deletePersistentValue(SAVE_KEY);
     setAbilityChoices(makeEmptyAbilityChoice());
     setSelectedInventoryMartialId(undefined);
     setSelectedAbilityInfoKey(undefined);
     setGame(normalizeGameState(structuredClone(initialGameState)));
   }
 
-  function restoreCheckpoint(key: string, label: string) {
-    const checkpoint = readStateCheckpoint(key);
+  async function restoreCheckpoint(key: string, label: string) {
+    const checkpoint = await readStateCheckpoint(key);
     if (!checkpoint) {
       pushSystemMessage(`没有可用的${label}存档。`);
       return;
     }
 
-    clearStateCheckpoint(key);
+    removeCheckpoint(key);
     closePanels();
     setInput("");
     setBusy(false);
@@ -1445,7 +1570,7 @@ export function useGameSession() {
     closePanels();
     setInput("");
     if (game.character.hp > 0) {
-      writeStateCheckpoint(ACTION_CHECKPOINT_KEY, game);
+      saveCheckpoint(ACTION_CHECKPOINT_KEY, game);
     }
 
     const playerMessage: Message = { id: uid("player"), role: "player", text };
@@ -1687,7 +1812,13 @@ export function useGameSession() {
           : aiResult.proposals.proposedWorldAction
             ? tryResolveEconomyAction(text, combatPatched, globalUpdateDue, aiResult.proposals.proposedWorldAction)
             : undefined;
-        const aiProposalPatch = baseGame.combat.active ? {} : aiProposalsToLocalPatch(combatPatched, aiResult.proposals);
+        const normalizedProposals = baseGame.combat.active
+          ? aiResult.proposals
+          : {
+            ...aiResult.proposals,
+            proposedCheck: normalizeWorldCheckAbility(text, aiResult.proposals.proposedCheck)
+          };
+        const aiProposalPatch = baseGame.combat.active ? {} : aiProposalsToLocalPatch(combatPatched, normalizedProposals);
         const aiNarrationPatch = baseGame.combat.active
           ? filterAiCombatPatch(aiResult.patch)
           : withSceneFallback({ ...aiResult.patch, ...aiProposalPatch }, aiResult.text, text);
@@ -1698,7 +1829,8 @@ export function useGameSession() {
         const outcome = applyFormalActionFollowups(baseGame, patched, text, {
           skipTick: Boolean(patched.pendingCheck)
         });
-        const dmText = economyResolution?.textOverride || aiResult.text;
+        const dmText = economyResolution?.textOverride
+          || appendNewPendingCheckInstruction(aiResult.text, baseGame, outcome.state);
         return {
           ...outcome.state,
           messages: [...outcome.state.messages, ...outcome.messages, { id: uid("dm"), role: "dm", text: dmText }]
@@ -1710,13 +1842,14 @@ export function useGameSession() {
         const outcome = applyFormalActionFollowups(baseGame, patched, text, {
           skipTick: Boolean(patched.pendingCheck)
         });
+        const dmText = appendNewPendingCheckInstruction(localCombatResolution.text, baseGame, outcome.state);
         return {
           ...outcome.state,
           messages: [
             ...outcome.state.messages,
             ...outcome.messages,
             { id: uid("system"), role: "system", text: `API 调用失败，已切回本地主持：${error instanceof Error ? error.message : ""}` },
-            { id: uid("dm"), role: "dm", text: localCombatResolution.text }
+            { id: uid("dm"), role: "dm", text: dmText }
           ]
         };
       });
@@ -1786,7 +1919,7 @@ export function useGameSession() {
     setBusy(true);
     closePanels();
     if (game.character.hp > 0) {
-      writeStateCheckpoint(ACTION_CHECKPOINT_KEY, game);
+      saveCheckpoint(ACTION_CHECKPOINT_KEY, game);
     }
 
     const combinedText = `${pendingDamage.hitText}\n${text}`;
@@ -1920,7 +2053,7 @@ export function useGameSession() {
     setBusy(true);
     closePanels();
     if (game.character.hp > 0) {
-      writeStateCheckpoint(ACTION_CHECKPOINT_KEY, game);
+      saveCheckpoint(ACTION_CHECKPOINT_KEY, game);
     }
 
     const diceMessage: Message = { id: uid("dice"), role: "dice", text };
@@ -2148,7 +2281,8 @@ export function useGameSession() {
       try {
         const imported = JSON.parse(String(reader.result)) as GameState;
         closePanels();
-        clearDeathCheckpoints();
+        removeCheckpoint(COMBAT_CHECKPOINT_KEY);
+        removeCheckpoint(ACTION_CHECKPOINT_KEY);
         setGame(normalizeGameState(imported));
         localStorage.setItem(SETUP_KEY, "1");
       } catch {
@@ -2183,7 +2317,7 @@ export function useGameSession() {
     closePanels();
     setGame((prev) => {
       if (!isTutorialGame(prev) || isTutorialCombatGame(prev)) return prev;
-      writeStateCheckpoint(COMBAT_CHECKPOINT_KEY, prev);
+      saveCheckpoint(COMBAT_CHECKPOINT_KEY, prev);
 
       const staged = applyPatchToState(prev, {
         chapterStateUpdate: {
@@ -2213,7 +2347,8 @@ export function useGameSession() {
 
     lockUi(1400);
     closePanels();
-    clearDeathCheckpoints();
+    removeCheckpoint(COMBAT_CHECKPOINT_KEY);
+    removeCheckpoint(ACTION_CHECKPOINT_KEY);
     setGame(normalizeGameState({
       ...structuredClone(initialGameState),
       setupComplete: true,
@@ -2904,6 +3039,7 @@ export function useGameSession() {
     setSelectedAbilityInfoKey,
     rolling,
     setRolling,
+    storageHydrated,
     busy,
     setBusy,
     apiTest,

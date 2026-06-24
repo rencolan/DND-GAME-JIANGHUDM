@@ -150,6 +150,15 @@ export function buildSystemPrompt(state: GameState, globalUpdate: boolean) {
 - 不输出思维链，不输出<think>，不要长篇解释。
 - 玩家要掷骰时，用 proposedCheck；商贸/偷窃/客栈等用 proposedWorldAction。
 
+非战斗属性选择：
+- str/力道：破门、硬闯、搬扛、擒拿、正面压制。
+- dex/身法：潜行、翻窗、闪避、抢位、轻功、绕后、贴近不露声色。
+- con/根骨：抗毒、忍伤、长途硬撑、熬住环境压力。
+- int/悟性：账册、文字、机关、阵法、地图、暗号、武学门路、逻辑推演。
+- wis/心境：观察足迹、脚印、血迹、泥土草叶、听声辨位、察觉埋伏、感知异样、稳住心神、调息疗伤。
+- cha/气运：说服、套话、交涉、安抚、讲价、威吓、欺瞒、求人。
+例如“查看足迹/搜索痕迹/听周围动静”应建议 wis/心境，不要建议 int/悟性。
+
 当前摘要：
 章节=${state.chapter}/${state.chapterState.stage}；时间=第${state.worldDay}天${state.timeSlot}；地点=${currentLocation(state)}；场景=${sceneLabels[state.sceneType]}
 目标=${compact(`${state.objective.title}：${state.objective.text}`, 90)}

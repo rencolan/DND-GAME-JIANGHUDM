@@ -32,6 +32,15 @@ const ROLL_SFX_SRC = "/assets/sfx/dice-roll.wav";
 const IMPACT_SFX_SRC = "/assets/sfx/dice-stop.wav";
 const DICE_BOX_CONTAINER_ID = "dice-box-overlay-stage";
 
+function useLiteDiceProfile() {
+  return useMemo(() => {
+    if (typeof window === "undefined") return false;
+    const nav = navigator as Navigator & { deviceMemory?: number };
+    const coarsePointer = typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse)").matches;
+    return coarsePointer || (nav.deviceMemory ?? 8) <= 4;
+  }, []);
+}
+
 function formatFaceResults(faceResults: number[]) {
   return faceResults.join(" / ");
 }
@@ -116,6 +125,7 @@ function describeRollingResult(rolling: RollingState, result: RollingResult) {
 }
 
 export function DiceRollOverlay({ rolling, onComplete, sfxEnabled, sfxVolume }: DiceRollOverlayProps) {
+  const useLiteProfile = useLiteDiceProfile();
   const diceBoxRef = useRef<DiceBox | null>(null);
   const initPromiseRef = useRef<Promise<void> | null>(null);
   const stageTimerRef = useRef<number | null>(null);
@@ -176,9 +186,9 @@ export function DiceRollOverlay({ rolling, onComplete, sfxEnabled, sfxVolume }: 
           theme: DICE_THEME,
           themeColor: DICE_THEME_COLOR,
           preloadThemes: [DICE_THEME],
-          scale: 6.4,
-          lightIntensity: 1.15,
-          enableShadows: true,
+          scale: useLiteProfile ? 4.8 : 6.4,
+          lightIntensity: useLiteProfile ? 0.95 : 1.15,
+          enableShadows: !useLiteProfile,
           offscreen: false
         });
         diceBoxRef.current = instance;
@@ -229,6 +239,16 @@ export function DiceRollOverlay({ rolling, onComplete, sfxEnabled, sfxVolume }: 
 
     return () => window.clearTimeout(prewarmTimer);
   }, []);
+
+  useEffect(() => {
+    if (useLiteProfile) return undefined;
+
+    const prewarmTimer = window.setTimeout(() => {
+      void ensureDiceBox().catch(() => undefined);
+    }, 1200);
+
+    return () => window.clearTimeout(prewarmTimer);
+  }, [useLiteProfile]);
 
   useEffect(() => {
     if (!rolling) {
@@ -324,7 +344,7 @@ export function DiceRollOverlay({ rolling, onComplete, sfxEnabled, sfxVolume }: 
       cancelled = true;
       clearTimers();
     };
-  }, [rolling, sfxEnabled, sfxVolume]);
+  }, [rolling, sfxEnabled, sfxVolume, useLiteProfile]);
 
   const showEngine = Boolean(rolling) && (mode === "rolling" || mode === "revealed");
   const showStageLoading = Boolean(rolling) && mode === "loading";

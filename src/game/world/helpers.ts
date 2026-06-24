@@ -40,6 +40,100 @@ export function includesAny(text: string, keywords: string[]) {
   return keywords.some((keyword) => text.includes(keyword));
 }
 
+const WORLD_PERCEPTION_KEYWORDS = [
+  "足迹",
+  "脚印",
+  "鞋印",
+  "泥印",
+  "痕迹",
+  "血迹",
+  "拖拽",
+  "草叶",
+  "草丛",
+  "地面",
+  "泥土",
+  "灰尘",
+  "动静",
+  "声响",
+  "听声",
+  "倾听",
+  "气味",
+  "风声",
+  "埋伏",
+  "伏击",
+  "暗处",
+  "异样",
+  "不对劲",
+  "四周",
+  "周围",
+  "观察",
+  "搜寻",
+  "寻找",
+  "查看足迹",
+  "查看痕迹",
+  "查看地面"
+];
+
+const WORLD_INTELLECT_KEYWORDS = [
+  "账本",
+  "账页",
+  "残页",
+  "书信",
+  "线索",
+  "机关",
+  "阵法",
+  "图纸",
+  "地图",
+  "文字",
+  "符号",
+  "暗号",
+  "辨认",
+  "查验",
+  "推演",
+  "研读",
+  "琢磨",
+  "拆招",
+  "认穴",
+  "门路",
+  "破绽"
+];
+
+export function inferWorldCheckAbilityKey(action: string) {
+  if (includesAny(action, WORLD_PERCEPTION_KEYWORDS)) return "wis";
+  if (includesAny(action, WORLD_INTELLECT_KEYWORDS)) return "int";
+  if (includesAny(action, ["潜行", "摸近", "闪避", "轻功", "绕后", "翻窗", "抢位", "贴身"])) return "dex";
+  if (includesAny(action, ["硬闯", "破门", "掀翻", "擒拿", "压制", "扛物", "撞开"])) return "str";
+  if (includesAny(action, ["死撑", "抗毒", "硬扛", "忍伤", "熬住", "长途跋涉", "扛下"])) return "con";
+  if (includesAny(action, ["调息", "运气", "疗伤", "感知", "静坐", "周天", "内功运转", "运转内功"])) return "wis";
+  if (includesAny(action, ["说服", "交涉", "安抚", "套话", "讲价", "求人", "圆场", "威吓", "求助", "欺瞒"])) return "cha";
+  return undefined;
+}
+
+function perceptionSuggestedCheck(action: string): GamePatch["pendingCheck"] | undefined {
+  if (inferWorldCheckAbilityKey(action) !== "wis") return undefined;
+
+  return {
+    kind: "world",
+    label: "察觉环境里的细微异样",
+    abilityKey: "wis",
+    dc: 12,
+    reason: "这不是拆解账册或推演门路，而是看足迹、听动静、辨风声和草木痕迹，靠的是心境沉稳与感知敏锐。",
+    risk: "若失手，你可能漏掉关键痕迹，或把人留下的方向判断错。"
+  };
+}
+
+export function normalizeWorldCheckAbility(
+  action: string,
+  check: GamePatch["pendingCheck"] | undefined
+): GamePatch["pendingCheck"] | undefined {
+  if (!check || check.kind === "initiative" || check.kind === "combat_attack" || check.kind === "combat_escape") {
+    return check;
+  }
+
+  const abilityKey = inferWorldCheckAbilityKey(action);
+  return abilityKey ? { ...check, abilityKey, kind: check.kind || "world" } : check;
+}
+
 export function isEscapeCombatAction(text: string) {
   return includesAny(text, ESCAPE_ACTION_KEYWORDS);
 }
@@ -143,6 +237,9 @@ export function parseCombatDamageResult(text: string): ParsedDamageResult {
 }
 
 export function buildSuggestedCheck(action: string): GamePatch["pendingCheck"] | undefined {
+  const perceptionCheck = perceptionSuggestedCheck(action);
+  if (perceptionCheck) return perceptionCheck;
+
   if (includesAny(action, ["查看", "调查", "打探", "辨认", "查验", "拆招", "推演", "演练", "认穴", "琢磨"])) {
     return {
       kind: "world",

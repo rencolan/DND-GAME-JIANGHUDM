@@ -26,6 +26,7 @@ export function MessageBubble({ message, visuals = [], speakerVisual, loreEntiti
           alt={speakerVisual.alt}
           title={speakerVisual.title}
           loading="lazy"
+          decoding="async"
         />
       )}
       <article className={`message ${message.role}${isCombatSummary ? " combat-summary" : ""}`}>
