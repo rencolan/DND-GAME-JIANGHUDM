@@ -65,41 +65,48 @@ export function DicePanel({
     ? game.character.martialArts.find((art) => art.id === currentCheck.martialArtId)
     : undefined;
   const currentModeLabel = rollModeLabel(currentCheck?.rollMode);
+  const hasBoundResolution = Boolean(pendingDamage || currentCheck);
+  const isFreeTrial = !hasBoundResolution;
+
   const summaryTitle = pendingDamage
     ? "伤害结算"
     : currentCheck
       ? (combatInitiative ? "先攻判定" : combatEscape ? "逃脱判定" : combatAttack ? "攻击判定" : "当前判定")
-      : "试掷 d20";
+      : "试投 d20";
+
   const summaryHeading = pendingDamage
-    ? `${pendingDamage.label} · ${pendingDamageDice}${pendingDamage?.damageBonus ? ` +${pendingDamage.damageBonus}` : ""}`
+    ? `${pendingDamage.label} · ${pendingDamageDice}${pendingDamage.damageBonus ? ` +${pendingDamage.damageBonus}` : ""}`
     : currentCheck
       ? currentCheck.label
-      : "没有待处理判定";
+      : "当前没有待处理判定";
+
   const summaryText = pendingDamage
-    ? (pendingDamage.isCritical ? "暴击伤害已按翻倍骰计算，现在直接掷真实伤害。" : "命中已经确认，现在直接掷真实伤害。")
+    ? (pendingDamage.isCritical
+      ? "本次为暴击伤害，伤害骰已翻倍。掷完这一下后才会继续结算。"
+      : "命中已经确认。现在只需要掷出这次真实伤害。")
     : currentCheck
       ? (combatInitiative
-        ? "本轮先攻固定使用身法判定。"
+        ? "本轮先攻固定使用身法判定。掷完后决定谁先出手。"
         : combatEscape
-          ? (pendingCheckReason || currentCheck.reason)
+          ? (pendingCheckReason || currentCheck.reason || "先完成这次逃脱判定，才能知道能否摆脱缠斗。")
           : combatAttack
-            ? "先做命中判定，命中后再进入伤害结算。"
-            : pendingCheckReason || currentCheck.reason)
-      : "这里只做一次普通 d20 试掷，不推进状态，也不会写入结果。";
+            ? "先掷命中判定。命中后，系统才会进入伤害掷骰。"
+            : pendingCheckReason || currentCheck.reason || `请先完成这次 ${recommendedAbility?.label || currentCheck.abilityKey} 判定，剧情才会继续推进。`)
+      : "这里现在只是试投工具，不会推进剧情，也不会写入正式结果。";
+
   const summaryDetail = pendingDamage
     ? (pendingDamage.qiCost ? `命中后耗气 ${pendingDamage.qiCost}` : undefined)
     : currentCheck
       ? (
-        combatEscape
-          ? (recommendedAbility ? `当前属性：${recommendedAbility.label}` : undefined)
-          : targetedMartialArt
-            ? `当前挂钩武学：${targetedMartialArt.name}`
-            : recommendedAbility
-              ? `当前属性：${recommendedAbility.label}`
-              : undefined
+        targetedMartialArt
+          ? `关联武学：${targetedMartialArt.name}`
+          : recommendedAbility
+            ? `使用属性：${recommendedAbility.label}（修正 ${recommendedMod >= 0 ? "+" : ""}${recommendedMod}）`
+            : undefined
       )
-      : "默认只做常规判定";
-  const summaryNote = currentCheck?.suggestedAction || currentCheck?.risk || currentCheck?.enemyIntent;
+      : "没有 pendingCheck / pendingDamage 时，才会显示试投。";
+
+  const summaryNote = currentCheck?.risk || currentCheck?.suggestedAction || currentCheck?.enemyIntent;
   const trialLabel = currentCheck?.label || recommendedAbility?.label || "通用判定";
 
   return (
@@ -131,7 +138,7 @@ export function DicePanel({
           <article className="dice-summary">
             <div className="dice-summary-top">
               <span className="dice-kicker">{summaryTitle}</span>
-              <span className="dice-badge">{currentModeLabel}</span>
+              <span className="dice-badge">{currentCheck ? currentModeLabel : "试投"}</span>
             </div>
             {currentCheck && (
               <div className="dice-dc-banner">
@@ -149,10 +156,10 @@ export function DicePanel({
             )}
           </article>
 
-          {!game.combat.active && (
+          {!game.combat.active && currentCheck && (
             <section className={`qi-invest compact ${lowQi ? "low" : ""}`}>
               <div>
-                <span>内力投入</span>
+                <span>内力加成</span>
                 <b>{qiInvest} / {qiLimit}</b>
               </div>
               <input
@@ -162,7 +169,7 @@ export function DicePanel({
                 value={qiInvest}
                 onChange={(event) => setQiInvest(Number(event.target.value))}
               />
-              <p>每投入 2 点内力，判定额外 +1。</p>
+              <p>每投入 2 点真气，判定额外 +1。是否投入由你自己决定。</p>
             </section>
           )}
 
@@ -170,22 +177,22 @@ export function DicePanel({
             {combatInitiative ? (
               <button
                 className="martial-roll recommended"
-                onClick={() => rollDice("先攻（身法）", recommendedMod, currentCheck, { sendToDm: Boolean(currentCheck) })}
+                onClick={() => rollDice("先攻（身法）", recommendedMod, currentCheck, { sendToDm: true })}
               >
                 <span>
                   <strong>{recommendedAbility?.label || "身法"}</strong>
-                  <small>d20 + DEX</small>
+                  <small>1d20 · DEX 修正 · 先攻判定</small>
                 </span>
                 <b>{recommendedMod >= 0 ? "+" : ""}{recommendedMod}</b>
               </button>
             ) : combatEscape ? (
               <button
                 className="martial-roll recommended"
-                onClick={() => rollDice(trialLabel, recommendedMod, currentCheck, { sendToDm: Boolean(currentCheck) })}
+                onClick={() => rollDice(trialLabel, recommendedMod, currentCheck, { sendToDm: true })}
               >
                 <span>
                   <strong>{recommendedAbility?.label || trialLabel}</strong>
-                  <small>{currentCheck ? `${currentModeLabel} · d20 检定` : "试掷 · 1d20"}</small>
+                  <small>{currentModeLabel} · d20 · DC {currentCheck?.dc}</small>
                 </span>
                 <b>{recommendedMod >= 0 ? "+" : ""}{recommendedMod}</b>
               </button>
@@ -202,7 +209,7 @@ export function DicePanel({
                     key={art.id}
                     className={`martial-roll ${currentCheck?.martialArtId === art.id || currentCheck?.abilityKey === art.linkedAbility ? "recommended" : ""}`}
                     disabled={!canUse}
-                    onClick={() => rollDice(art.name, mod, currentCheck, { martialArt: art, sendToDm: Boolean(currentCheck) })}
+                    onClick={() => rollDice(art.name, mod, currentCheck, { martialArt: art, sendToDm: true })}
                   >
                     <span>
                       <strong>{art.name}</strong>
@@ -213,42 +220,56 @@ export function DicePanel({
                   </button>
                 );
               })
+            ) : currentCheck ? (
+              <button
+                className="martial-roll recommended"
+                onClick={() => rollDice(trialLabel, recommendedMod, currentCheck, {
+                  qiBonusSpend: qiInvest,
+                  sendToDm: true
+                })}
+              >
+                <span>
+                  <strong>{recommendedAbility?.label || trialLabel}</strong>
+                  <small>{currentModeLabel} · d20 · DC {currentCheck.dc}</small>
+                </span>
+                <b>{recommendedMod >= 0 ? "+" : ""}{recommendedMod}</b>
+              </button>
             ) : (
               <>
                 <button
                   className="martial-roll recommended"
-                  onClick={() => rollDice(trialLabel, recommendedMod, currentCheck, {
+                  onClick={() => rollDice(trialLabel, recommendedMod, undefined, {
                     qiBonusSpend: qiInvest,
-                    sendToDm: Boolean(currentCheck)
+                    sendToDm: false
                   })}
                 >
                   <span>
-                    <strong>{recommendedAbility?.label || trialLabel}</strong>
-                    <small>{currentCheck ? `${currentModeLabel} · d20 检定` : "试掷 · 1d20"}</small>
+                    <strong>试投 d20</strong>
+                    <small>仅测试掷骰，不推进剧情</small>
                   </span>
                   <b>{recommendedMod >= 0 ? "+" : ""}{recommendedMod}</b>
                 </button>
 
                 {game.character.martialArts.length > 0 && (
-                  <div className="dice-inline-note">也可以直接按招式试掷</div>
+                  <div className="dice-inline-note">下方这些也是试投，不会替代正式判定。</div>
                 )}
 
                 {game.character.martialArts.map((art) => {
                   const ability = game.character.abilities.find((entry) => entry.key === art.linkedAbility);
                   const mod = ability ? abilityModifier(ability.value) : 0;
-                const costOnHit = art.category === "internal" ? art.baseQiCost + sealedQiSurcharge : 0;
+                  const costOnHit = art.category === "internal" ? art.baseQiCost + sealedQiSurcharge : 0;
                   const canUse = qiInvest <= game.character.qi && (art.category === "external" || game.character.qi >= qiInvest + costOnHit);
                   const tags = martialTagLabels(art);
 
                   return (
                     <button
                       key={art.id}
-                      className={`martial-roll ${currentCheck?.martialArtId === art.id || currentCheck?.abilityKey === art.linkedAbility ? "recommended" : ""}`}
+                      className="martial-roll"
                       disabled={!canUse}
-                      onClick={() => rollDice(`${art.name}（${ability?.label || "属性"}）`, mod, currentCheck, {
+                      onClick={() => rollDice(`${art.name}（${ability?.label || "属性"}）`, mod, undefined, {
                         martialArt: art,
                         qiBonusSpend: qiInvest,
-                        sendToDm: Boolean(currentCheck)
+                        sendToDm: false
                       })}
                     >
                       <span>

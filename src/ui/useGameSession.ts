@@ -386,6 +386,7 @@ function buildPendingCheckInstruction(state: GameState, check?: PendingCheck) {
   const lines = [
     `【判定】${check.label}`,
     `请进行 ${abilityLabel} 判定，DC ${check.dc}；${rollModeInstruction(check.rollMode)}。`,
+    "操作：可直接点击底部“掷判定”，或打开骰子面板后再掷。",
     check.reason ? `理由：${check.reason}` : undefined,
     check.risk ? `失败风险：${check.risk}` : undefined
   ].filter(Boolean);

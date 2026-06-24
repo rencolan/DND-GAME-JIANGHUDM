@@ -1,6 +1,7 @@
 import { Dices, Send, User } from "lucide-react";
 import { type CSSProperties, type FormEvent, useEffect, useMemo, useState } from "react";
 import { doubleDamageDice } from "../../game/combat";
+import { abilityModifier } from "../../game/rules";
 import { buildLocationOpportunities, currentLocationName, isVisibleNpc, primaryRouteForNpc } from "../../game/world";
 import type { DrawerTab, Message, PendingCheck } from "../../types";
 import { sceneAssets } from "../display";
@@ -152,6 +153,7 @@ export function GameScreen({ session }: GameScreenProps) {
   const currentCheck = game.pendingCheck;
   const pendingDamage = game.pendingDamage;
   const isDead = game.character.hp <= 0;
+  const hasOutOfCombatPendingResolution = !isDead && !game.combat.active && Boolean(currentCheck || pendingDamage);
   const combatEscape = game.combat.active && currentCheck?.kind === "combat_escape";
   const combatInitiative = game.combat.active && game.combat.phase === "opening";
   const combatAttack = game.combat.active && game.combat.phase === "awaiting_hit_check" && !combatEscape;
@@ -159,6 +161,22 @@ export function GameScreen({ session }: GameScreenProps) {
   const controlsBlocked = isDead || uiLocked || Boolean(session.rolling);
   const pendingDamageDice = pendingDamage
     ? (pendingDamage.isCritical ? doubleDamageDice(pendingDamage.damageDice) : pendingDamage.damageDice)
+    : undefined;
+  const nonCombatRecommendedAbility = !game.combat.active && currentCheck
+    ? game.character.abilities.find((ability) => ability.key === currentCheck.abilityKey)
+    : undefined;
+  const nonCombatRecommendedMod = nonCombatRecommendedAbility ? abilityModifier(nonCombatRecommendedAbility.value) : 0;
+  const directPendingAction = !game.combat.active
+    ? pendingDamage
+      ? () => rollDamageDice(pendingDamage)
+      : currentCheck
+        ? () => rollDice(
+          currentCheck.label || nonCombatRecommendedAbility?.label || "通用判定",
+          nonCombatRecommendedMod,
+          currentCheck,
+          { sendToDm: true, qiBonusSpend: 0 }
+        )
+        : undefined
     : undefined;
   const pendingCheckTag = combatInitiative ? "待先攻" : combatAttack ? "待攻击" : "待判定";
   const pendingCheckReason = combatInitiative
@@ -177,6 +195,15 @@ export function GameScreen({ session }: GameScreenProps) {
         ? "先命中，后伤害。"
         : effectivePendingCheckReason;
   const displayPendingCheckAction = combatInitiative ? "掷先攻" : combatEscape ? "掷逃跑" : combatAttack ? "掷攻击" : "进行判定";
+  const uiPendingCheckTag = combatInitiative ? "待先攻" : combatEscape ? "待逃脱" : combatAttack ? "待攻击" : "待判定";
+  const uiPendingCheckReason = combatInitiative
+    ? "本轮先攻固定使用身法判定。"
+    : combatEscape
+      ? currentCheck?.reason
+      : combatAttack
+        ? "先掷命中，命中后再掷伤害。"
+        : (currentCheck?.reason || (currentCheck ? `请先完成这次判定，目标 DC ${currentCheck.dc}。` : undefined));
+  const uiPendingCheckAction = combatInitiative ? "掷先攻" : combatEscape ? "掷逃脱" : combatAttack ? "掷攻击" : "进行判定";
   const latestCombatSummary = useMemo(() => readLatestCombatSummary(game.messages), [game.messages]);
   const [visibleCombatSummary, setVisibleCombatSummary] = useState<CombatHudSummary | undefined>(undefined);
 
@@ -203,6 +230,11 @@ export function GameScreen({ session }: GameScreenProps) {
     : currentCheck
       ? `DC ${currentCheck.dc} · ${currentCheck.label}`
       : undefined;
+  const uiActionSummary = pendingDamage
+    ? `${pendingDamage.label} · ${pendingDamageDice}${pendingDamage.damageBonus ? ` +${pendingDamage.damageBonus}` : ""}`
+    : currentCheck
+      ? `DC ${currentCheck.dc} · ${currentCheck.label}`
+      : undefined;
   const actionHint = pendingDamage
     ? "命中已确认，下一步直接掷伤害。"
     : currentCheck
@@ -212,6 +244,22 @@ export function GameScreen({ session }: GameScreenProps) {
     ? { label: "掷伤害", onClick: openPendingCheck }
     : currentCheck
       ? { label: "去掷骰", onClick: openPendingCheck }
+      : undefined;
+  const effectiveHudButton = !game.combat.active && (pendingDamage || currentCheck)
+    ? {
+      label: pendingDamage ? "掷伤害" : "掷判定",
+      onClick: directPendingAction || openPendingCheck
+    }
+    : hudButton;
+  const uiEffectiveHudButton = pendingDamage
+    ? { label: "掷伤害", onClick: game.combat.active ? openPendingCheck : (directPendingAction || openPendingCheck) }
+    : currentCheck
+      ? { label: "掷判定", onClick: game.combat.active ? openPendingCheck : (directPendingAction || openPendingCheck) }
+      : undefined;
+  const uiHudDetail = pendingDamage
+    ? "命中已经确认，下一步直接掷伤害。"
+    : currentCheck
+      ? `${rollModeLabel(currentCheck.rollMode)} · ${uiPendingCheckReason}`
       : undefined;
   const hudState = visibleCombatSummary
     ? {
@@ -239,6 +287,50 @@ export function GameScreen({ session }: GameScreenProps) {
     game.combat.active ? `HP ${game.combat.enemyHp}/${game.combat.enemyMaxHp}` : undefined,
     game.combat.active && game.combat.round ? `回合 ${game.combat.round}` : undefined
   ].filter(Boolean) as string[];
+  const uiHudState = visibleCombatSummary
+    ? {
+      kind: "result" as const,
+      kicker: visibleCombatSummary.title,
+      headline: visibleCombatSummary.headline,
+      detail: visibleCombatSummary.detail
+    }
+    : actionSummary
+      ? {
+        kind: "prompt" as const,
+        kicker: pendingDamage ? "待伤害" : uiPendingCheckTag,
+        headline: actionSummary,
+        detail: uiHudDetail
+      }
+      : enemySummary
+        ? {
+          kind: "idle" as const,
+          kicker: "战斗中",
+          headline: enemySummary,
+          detail: "等待下一次交锋。"
+        }
+        : undefined;
+  const resolvedHudState = visibleCombatSummary
+    ? {
+      kind: "result" as const,
+      kicker: visibleCombatSummary.title,
+      headline: visibleCombatSummary.headline,
+      detail: visibleCombatSummary.detail
+    }
+    : uiActionSummary
+      ? {
+        kind: "prompt" as const,
+        kicker: pendingDamage ? "待伤害" : uiPendingCheckTag,
+        headline: uiActionSummary,
+        detail: uiHudDetail
+      }
+      : enemySummary
+        ? {
+          kind: "idle" as const,
+          kicker: "战斗中",
+          headline: enemySummary,
+          detail: "等待下一次交锋。"
+        }
+        : undefined;
   const appStyle = {
     "--scene-bg": `url("${sceneBackground}")`
   } as CSSProperties;
@@ -380,7 +472,7 @@ export function GameScreen({ session }: GameScreenProps) {
             </div>
           </article>
         )}
-        {!isDead && !game.combat.active && (
+        {!isDead && !game.combat.active && !hasOutOfCombatPendingResolution && (
           <OpportunityBoard
             opportunities={opportunities}
             controlsBlocked={controlsBlocked}
@@ -391,18 +483,6 @@ export function GameScreen({ session }: GameScreenProps) {
           />
         )}
         {!isDead && game.combat.active && <EnemyCard combat={game.combat} />}
-        {!isDead && !game.combat.active && (
-          <PendingCheckCard
-            currentCheck={currentCheck}
-            pendingDamage={pendingDamage}
-            pendingDamageDice={pendingDamageDice}
-            pendingCheckTag={displayPendingCheckTag}
-            pendingCheckReason={displayPendingCheckReason}
-            pendingCheckAction={displayPendingCheckAction}
-            onOpenPendingCheck={openPendingCheck}
-            combatActive={false}
-          />
-        )}
       </ChatLog>
 
       {isDead && (
@@ -438,28 +518,41 @@ export function GameScreen({ session }: GameScreenProps) {
         </section>
       )}
 
-      {!isDead && hudState && (
+      {!isDead && resolvedHudState && (
         <section className="action-hud">
-          <div className={`action-hud-card ${hudState.kind}`}>
+          <div className={`action-hud-card ${resolvedHudState.kind}`}>
             <div className="action-hud-main">
               <div className="action-hud-topline">
-                <span className="action-hud-kicker">{hudState.kicker}</span>
+                <span className="action-hud-kicker">{resolvedHudState.kicker}</span>
                 {hudBadges.length > 0 && (
                   <div className="action-hud-badges">
                     {hudBadges.map((badge) => <i key={badge} className="action-hud-badge">{badge}</i>)}
                   </div>
                 )}
               </div>
-              <b>{hudState.headline}</b>
-              {hudState.detail && <small>{hudState.detail}</small>}
+              <b>{resolvedHudState.headline}</b>
+              {resolvedHudState.detail && <small>{resolvedHudState.detail}</small>}
             </div>
-            {hudButton && (
-              <button type="button" onClick={hudButton.onClick} className="action-hud-button">
-                {hudButton.label}
+            {uiEffectiveHudButton && (
+              <button type="button" onClick={uiEffectiveHudButton.onClick} className="action-hud-button">
+                {uiEffectiveHudButton.label}
               </button>
             )}
           </div>
         </section>
+      )}
+
+      {hasOutOfCombatPendingResolution && (
+        <PendingCheckCard
+          currentCheck={currentCheck}
+          pendingDamage={pendingDamage}
+          pendingDamageDice={pendingDamageDice}
+          pendingCheckTag={uiPendingCheckTag}
+          pendingCheckReason={uiPendingCheckReason}
+          pendingCheckAction={uiPendingCheckAction}
+          onOpenPendingCheck={openPendingCheck}
+          combatActive={false}
+        />
       )}
 
       {!isDead && (
@@ -470,7 +563,7 @@ export function GameScreen({ session }: GameScreenProps) {
           currentCheck={currentCheck}
           combatInitiative={combatInitiative}
           combatAttack={combatAttack}
-          pendingCheckReason={displayPendingCheckReason}
+          pendingCheckReason={uiPendingCheckReason}
           game={game}
           qiInvest={qiInvest}
           setQiInvest={setQiInvest}
