@@ -1769,6 +1769,27 @@ export function useGameSession() {
     }
 
     if (
+      !baseGame.combat.active &&
+      !baseGame.pendingCheck &&
+      localCombatResolution.patch.pendingCheck
+    ) {
+      setGame((prev) => {
+        const patched = applyPatchToState(prev, withSceneFallback(localCombatResolution.patch, localCombatResolution.text, text));
+        const outcome = applyFormalActionFollowups(baseGame, patched, text, {
+          skipTick: Boolean(patched.pendingCheck)
+        });
+        const dmText = appendNewPendingCheckInstruction(localCombatResolution.text, baseGame, outcome.state);
+        return {
+          ...outcome.state,
+          messages: [...outcome.state.messages, ...outcome.messages, { id: uid("dm"), role: "dm", text: dmText }]
+        };
+      });
+      closePanels();
+      setBusy(false);
+      return;
+    }
+
+    if (
       baseGame.combat.active &&
       baseGame.pendingCheck &&
       !baseGame.pendingDamage &&
@@ -1816,7 +1837,7 @@ export function useGameSession() {
           ? aiResult.proposals
           : {
             ...aiResult.proposals,
-            proposedCheck: normalizeWorldCheckAbility(text, aiResult.proposals.proposedCheck)
+            proposedCheck: normalizeWorldCheckAbility(text, aiResult.proposals.proposedCheck, combatPatched)
           };
         const aiProposalPatch = baseGame.combat.active ? {} : aiProposalsToLocalPatch(combatPatched, normalizedProposals);
         const aiNarrationPatch = baseGame.combat.active

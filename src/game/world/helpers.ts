@@ -66,12 +66,20 @@ const WORLD_PERCEPTION_KEYWORDS = [
   "不对劲",
   "四周",
   "周围",
-  "观察",
-  "搜寻",
-  "寻找",
   "查看足迹",
   "查看痕迹",
   "查看地面"
+];
+
+const WORLD_GENERIC_LOOK_KEYWORDS = [
+  "查看",
+  "看看",
+  "观察",
+  "打量",
+  "环顾",
+  "搜索",
+  "搜寻",
+  "寻找"
 ];
 
 const WORLD_INTELLECT_KEYWORDS = [
@@ -101,12 +109,205 @@ const WORLD_INTELLECT_KEYWORDS = [
 export function inferWorldCheckAbilityKey(action: string) {
   if (includesAny(action, WORLD_PERCEPTION_KEYWORDS)) return "wis";
   if (includesAny(action, WORLD_INTELLECT_KEYWORDS)) return "int";
+  if (includesAny(action, WORLD_GENERIC_LOOK_KEYWORDS)) return "wis";
   if (includesAny(action, ["潜行", "摸近", "闪避", "轻功", "绕后", "翻窗", "抢位", "贴身"])) return "dex";
   if (includesAny(action, ["硬闯", "破门", "掀翻", "擒拿", "压制", "扛物", "撞开"])) return "str";
   if (includesAny(action, ["死撑", "抗毒", "硬扛", "忍伤", "熬住", "长途跋涉", "扛下"])) return "con";
   if (includesAny(action, ["调息", "运气", "疗伤", "感知", "静坐", "周天", "内功运转", "运转内功"])) return "wis";
   if (includesAny(action, ["说服", "交涉", "安抚", "套话", "讲价", "求人", "圆场", "威吓", "求助", "欺瞒"])) return "cha";
   return undefined;
+}
+
+type WorldCheckIntent = "perception" | "intellect" | "stealth" | "force" | "endurance" | "social" | "inner";
+type WorldCheckFactor = "time" | "clue" | "target" | "method";
+
+const WORLD_CHECK_LABELS: Record<WorldCheckIntent, string> = {
+  perception: "察觉环境里的细微异样",
+  intellect: "看破线索与门路",
+  stealth: "轻身夺位不露形迹",
+  force: "正面发力强行破局",
+  endurance: "咬牙硬撑过去",
+  social: "让对方松口表态",
+  inner: "稳住气机与心神"
+};
+
+const WORLD_CHECK_BASE_REASON: Record<WorldCheckIntent, string> = {
+  perception: "这一步靠的是心境沉稳、感知敏锐，去辨足迹、声响、气味、草木和人留下的细微异样。",
+  intellect: "这一步靠的是悟性，去拆解账册、文字、机关、路线、暗号或武学门路里的逻辑。",
+  stealth: "这一步讲究身法和步点，既要快，也要不露声色。",
+  force: "这一步不是取巧的时候，得靠正面力道把局势顶开。",
+  endurance: "这一步拼的不是巧劲，而是体魄、耐性与能不能熬住。",
+  social: "对方心里有戒备，想让他松口，靠的是气度、话头和临场拿捏。",
+  inner: "这一步讲究心神沉定、真气归拢，不能急躁乱来。"
+};
+
+const WORLD_CHECK_RISK: Record<WorldCheckIntent, string> = {
+  perception: "若失手，你可能漏掉关键痕迹，或把人留下的方向判断错。",
+  intellect: "若失手，你可能漏掉关键处，或把局面看偏。",
+  stealth: "若失手，你会先一步暴露。",
+  force: "若失手，你会被当场绊住，甚至先露破绽。",
+  endurance: "若失手，你会先一步露出疲态或伤势。",
+  social: "若失手，对方会更警觉，也更不愿配合。",
+  inner: "若失手，气机会更乱，白白耗去心力。"
+};
+
+const TASK_MOD: Record<"simple" | "normal" | "hard" | "veryHard", number> = {
+  simple: 0,
+  normal: 2,
+  hard: 5,
+  veryHard: 8
+};
+
+function clampDc(value: number) {
+  return Math.max(8, Math.min(24, value));
+}
+
+function inferWorldCheckIntent(action: string): WorldCheckIntent | undefined {
+  if (includesAny(action, WORLD_PERCEPTION_KEYWORDS)) return "perception";
+  if (includesAny(action, WORLD_INTELLECT_KEYWORDS)) return "intellect";
+  if (includesAny(action, WORLD_GENERIC_LOOK_KEYWORDS)) return "perception";
+  if (includesAny(action, ["潜行", "摸近", "闪避", "轻功", "绕后", "翻窗", "抢位", "贴身"])) return "stealth";
+  if (includesAny(action, ["硬闯", "破门", "掀翻", "擒拿", "压制", "扛物", "撞开"])) return "force";
+  if (includesAny(action, ["死撑", "抗毒", "硬扛", "忍伤", "熬住", "长途跋涉", "扛下"])) return "endurance";
+  if (includesAny(action, ["调息", "运气", "疗伤", "感知", "静坐", "周天", "内功运转", "运转内功"])) return "inner";
+  if (includesAny(action, ["说服", "交涉", "安抚", "套话", "讲价", "求人", "圆场", "威吓", "求助", "欺瞒"])) return "social";
+  return undefined;
+}
+
+function abilityForWorldIntent(intent: WorldCheckIntent) {
+  switch (intent) {
+    case "perception":
+    case "inner":
+      return "wis";
+    case "intellect":
+      return "int";
+    case "stealth":
+      return "dex";
+    case "force":
+      return "str";
+    case "endurance":
+      return "con";
+    case "social":
+      return "cha";
+    default:
+      return undefined;
+  }
+}
+
+function inferTaskDifficulty(action: string, intent: WorldCheckIntent): keyof typeof TASK_MOD {
+  if (includesAny(action, ["宗师", "高手", "精妙", "极难", "绝密", "严防", "重重", "机关重重"])) return "veryHard";
+  if (includesAny(action, ["隐藏", "掩盖", "伪装", "暗门", "密道", "复杂", "混乱", "雨", "夜", "远处"])) return "hard";
+  if (intent === "stealth" || intent === "force") return "normal";
+  if (includesAny(action, ["随便", "简单", "明显", "大概"])) return "simple";
+  return "normal";
+}
+
+function timePressureMod(action: string, state?: GameState) {
+  if (includesAny(action, ["仔细", "慢慢", "花时间", "反复", "耐心", "蹲下细看", "细看"])) return -1;
+  if (includesAny(action, ["立刻", "马上", "赶紧", "快速", "匆匆", "边跑", "追上", "抢时间", "来不及"])) return 2;
+
+  const objectiveText = `${state?.objective?.title || ""}${state?.objective?.text || ""}${state?.chapterState?.stage || ""}`;
+  if (includesAny(objectiveText, ["追", "救", "赶", "危", "逃", "刺客", "追兵"])) return 2;
+  return 0;
+}
+
+function clueQualityMod(action: string, intent: WorldCheckIntent, state?: GameState) {
+  let mod = 0;
+  if (intent === "perception") {
+    if (includesAny(action, ["明显", "很深", "新鲜", "血迹", "拖拽", "泥地", "沙土"])) mod -= 2;
+    if (includesAny(action, ["模糊", "半枚", "不清", "露水", "雨", "水沟", "冲散", "人群", "踩踏", "石板"])) mod += 2;
+    if (includesAny(action, ["抹去", "掩盖", "伪装", "刻意"])) mod += 4;
+    if (state?.sceneType === "market") mod += 1;
+    if (state?.sceneType === "temple" || state?.sceneType === "inn") mod -= 1;
+  }
+
+  if (intent === "intellect") {
+    if (includesAny(action, ["残页", "暗号", "机关", "阵法", "密文"])) mod += 2;
+    if (includesAny(action, ["对照", "核对", "原本", "图纸", "账本"])) mod -= 1;
+  }
+
+  return mod;
+}
+
+function targetStrengthMod(action: string, state?: GameState) {
+  const namedEnemy = enemyPresets.find((preset) => action.includes(preset.name));
+  if (namedEnemy) {
+    if (namedEnemy.ac >= 15 || namedEnemy.maxHp >= 45 || namedEnemy.archetype === "boss") return 6;
+    if (namedEnemy.ac >= 13 || namedEnemy.maxHp >= 30) return 4;
+    if (namedEnemy.ac >= 12 || namedEnemy.maxHp >= 22) return 2;
+  }
+
+  const namedNpc = state?.npcs?.find((npc) => action.includes(npc.name));
+  if (namedNpc?.tags?.some((tag) => includesAny(tag, ["高手", "刺客", "掌门", "老江湖", "精英"]))) return 3;
+  if (includesAny(action, ["高手", "刺客", "老江湖", "警觉", "掌门", "宗师"])) return 3;
+  return 0;
+}
+
+function methodRollMode(action: string, dcMods: Partial<Record<WorldCheckFactor, number>>) {
+  const concreteMethod = includesAny(action, [
+    "蹲下",
+    "拨开",
+    "用灯",
+    "火折",
+    "对照",
+    "沿着",
+    "屏息",
+    "贴墙",
+    "绕路",
+    "请教",
+    "拿出",
+    "慢慢"
+  ]);
+  const recklessMethod = includesAny(action, ["随便", "硬来", "莽", "大声", "当众", "匆匆", "闭眼"]);
+
+  if (concreteMethod && (dcMods.time || 0) <= 0) return "advantage" as const;
+  if (recklessMethod || (dcMods.time || 0) >= 4 || (dcMods.clue || 0) >= 4) return "disadvantage" as const;
+  return "normal" as const;
+}
+
+function factorSummary(dcMods: Partial<Record<WorldCheckFactor, number>>) {
+  return [
+    dcMods.time ? `时间${dcMods.time > 0 ? "紧" : "足"} ${dcMods.time > 0 ? "+" : ""}${dcMods.time}` : undefined,
+    dcMods.clue ? `线索${dcMods.clue > 0 ? "不明" : "明显"} ${dcMods.clue > 0 ? "+" : ""}${dcMods.clue}` : undefined,
+    dcMods.target ? `对象难缠 +${dcMods.target}` : undefined
+  ].filter(Boolean).join("；");
+}
+
+export function buildWorldCheck(
+  action: string,
+  state?: GameState,
+  proposedCheck?: GamePatch["pendingCheck"]
+): GamePatch["pendingCheck"] | undefined {
+  const intent = inferWorldCheckIntent(action)
+    || (proposedCheck?.abilityKey === "int" ? "intellect" : undefined)
+    || (proposedCheck?.abilityKey === "dex" ? "stealth" : undefined)
+    || (proposedCheck?.abilityKey === "str" ? "force" : undefined)
+    || (proposedCheck?.abilityKey === "con" ? "endurance" : undefined)
+    || (proposedCheck?.abilityKey === "cha" ? "social" : undefined)
+    || (proposedCheck?.abilityKey === "wis" ? "perception" : undefined);
+  if (!intent) return undefined;
+
+  const abilityKey = abilityForWorldIntent(intent);
+  const task = inferTaskDifficulty(action, intent);
+  const dcMods = {
+    time: timePressureMod(action, state),
+    clue: clueQualityMod(action, intent, state),
+    target: targetStrengthMod(action, state)
+  };
+  const dc = clampDc(10 + TASK_MOD[task] + dcMods.time + dcMods.clue + dcMods.target);
+  const mode = methodRollMode(action, dcMods);
+  const factors = factorSummary(dcMods);
+
+  return {
+    kind: "world",
+    label: proposedCheck?.label || WORLD_CHECK_LABELS[intent],
+    abilityKey,
+    rollMode: mode,
+    dc,
+    reason: `${WORLD_CHECK_BASE_REASON[intent]}${factors ? ` 本地难度因子：${factors}。` : ""}`,
+    risk: proposedCheck?.risk || WORLD_CHECK_RISK[intent],
+    suggestedAction: proposedCheck?.suggestedAction
+  };
 }
 
 function perceptionSuggestedCheck(action: string): GamePatch["pendingCheck"] | undefined {
@@ -124,14 +325,14 @@ function perceptionSuggestedCheck(action: string): GamePatch["pendingCheck"] | u
 
 export function normalizeWorldCheckAbility(
   action: string,
-  check: GamePatch["pendingCheck"] | undefined
+  check: GamePatch["pendingCheck"] | undefined,
+  state?: GameState
 ): GamePatch["pendingCheck"] | undefined {
   if (!check || check.kind === "initiative" || check.kind === "combat_attack" || check.kind === "combat_escape") {
     return check;
   }
 
-  const abilityKey = inferWorldCheckAbilityKey(action);
-  return abilityKey ? { ...check, abilityKey, kind: check.kind || "world" } : check;
+  return buildWorldCheck(action, state, check) || check;
 }
 
 export function isEscapeCombatAction(text: string) {
@@ -236,7 +437,9 @@ export function parseCombatDamageResult(text: string): ParsedDamageResult {
   return parseDamageResult(text);
 }
 
-export function buildSuggestedCheck(action: string): GamePatch["pendingCheck"] | undefined {
+export function buildSuggestedCheck(action: string, state?: GameState): GamePatch["pendingCheck"] | undefined {
+  return buildWorldCheck(action, state);
+
   const perceptionCheck = perceptionSuggestedCheck(action);
   if (perceptionCheck) return perceptionCheck;
 

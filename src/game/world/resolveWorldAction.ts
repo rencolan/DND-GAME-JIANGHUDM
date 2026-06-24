@@ -1032,7 +1032,7 @@ export function resolveWorldAction(
   const genericCombat = maybeEnterGenericCombat(state, action, globalUpdate, firstActionPatch);
   if (genericCombat) return genericCombat;
 
-  const suggestedCheck = buildSuggestedCheck(action);
+  const suggestedCheck = buildSuggestedCheck(action, state);
   if (suggestedCheck) {
     return {
       textId: "suggested_check",

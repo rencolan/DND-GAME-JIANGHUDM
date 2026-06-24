@@ -80,7 +80,24 @@ test("world actions create a pending wisdom check for inspecting tracks", () => 
 
   assert.equal(result.textId, "suggested_check");
   assert.equal(result.patch.pendingCheck?.abilityKey, "wis");
-  assert.equal(result.patch.pendingCheck?.dc, 12);
+  assert.ok((result.patch.pendingCheck?.dc || 0) >= 10);
+  assert.ok((result.patch.pendingCheck?.dc || 0) <= 14);
+});
+
+test("generic look action creates a pending wisdom check", () => {
+  const result = resolveWorldAction("查看", cloneState(), false);
+
+  assert.equal(result.textId, "suggested_check");
+  assert.equal(result.patch.pendingCheck?.abilityKey, "wis");
+});
+
+test("world check dc responds to clue quality and method", () => {
+  const clear = resolveWorldAction("我蹲下细看新鲜足迹，拨开草叶沿着泥印查看", cloneState(), false);
+  const faint = resolveWorldAction("我匆匆查看被雨水冲散的半枚鞋印", cloneState(), false);
+
+  assert.equal(clear.patch.pendingCheck?.abilityKey, "wis");
+  assert.equal(clear.patch.pendingCheck?.rollMode, "advantage");
+  assert.ok((faint.patch.pendingCheck?.dc || 0) > (clear.patch.pendingCheck?.dc || 0));
 });
 
 test("world intellect checks stay on intelligence for ledgers and mechanisms", () => {
@@ -92,11 +109,12 @@ test("ai proposed world checks are normalized by local action intent", () => {
   const normalized = normalizeWorldCheckAbility("查看泥地里的鞋印", {
     label: "查看鞋印",
     abilityKey: "int",
-    dc: 12,
+    dc: 20,
     reason: "AI suggested the wrong attribute."
   });
 
   assert.equal(normalized?.abilityKey, "wis");
+  assert.notEqual(normalized?.dc, 20);
 });
 
 test("exposed and guarded change effective enemy AC", () => {

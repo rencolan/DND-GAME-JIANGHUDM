@@ -158,6 +158,7 @@ export function buildSystemPrompt(state: GameState, globalUpdate: boolean) {
 - wis/心境：观察足迹、脚印、血迹、泥土草叶、听声辨位、察觉埋伏、感知异样、稳住心神、调息疗伤。
 - cha/气运：说服、套话、交涉、安抚、讲价、威吓、欺瞒、求人。
 例如“查看足迹/搜索痕迹/听周围动静”应建议 wis/心境，不要建议 int/悟性。
+非战斗 DC 由本地根据任务难度、时间压力、线索清晰度、对象强弱和玩家方法重算；你可以写 reason，但不要把 dc 当最终裁定。
 
 当前摘要：
 章节=${state.chapter}/${state.chapterState.stage}；时间=第${state.worldDay}天${state.timeSlot}；地点=${currentLocation(state)}；场景=${sceneLabels[state.sceneType]}
