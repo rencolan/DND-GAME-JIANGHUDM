@@ -376,6 +376,7 @@ export function findNamedEnemy(action: string) {
 function extractLabel(text: string, prefix: "判定" | "伤害") {
   const direct = text.match(new RegExp(`【${prefix}】\\s*(.+)`));
   if (direct?.[1]) return direct[1].trim();
+  // Legacy mojibake matcher: keep this only so older saved roll text can still resolve.
   const legacy = text.match(new RegExp(`銆愬${prefix === "判定" ? "垽瀹" : "激瀹"}.*?\\s*(.+)`));
   return legacy?.[1]?.trim();
 }
@@ -386,6 +387,7 @@ function extractLastNumber(text: string, pattern: RegExp) {
 }
 
 function findDamageLine(text: string) {
+  // Legacy mojibake matcher: keep this only so older saved damage text can still resolve.
   return text.split(/\r?\n/).reverse().find((line) =>
     line.includes("【伤害】") || line.includes("銆愬激瀹")
   );
@@ -396,6 +398,7 @@ export function parseHitResult(text: string): ParsedHitResult {
   const naturalRoll = extractLastNumber(text, /d20[=:：]\s*(\d+)/);
   const total = Number(
     text.match(/总计[：:]\s*(\d+)/)?.[1]
+    // Legacy mojibake matcher: keep this only so older saved roll text can still resolve.
     || text.match(/鎬昏锛?\s*(\d+)/)?.[1]
     || Number.NaN
   );

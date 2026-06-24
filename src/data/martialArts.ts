@@ -3,7 +3,7 @@ import { art } from "./shared";
 
 export const defaultMartialArts = {
   dali: [
-    art("yiyang-zhi", "一阳指", "internal", "int", "1d8", "凝气一点，隔空伤敌。", 1, {
+    art("yiyang-zhi", "一阳指", "internal", "int", "1d8", "凝气一线，隔空伤敌。", 1, {
       grade: "家传",
       source: "大理段氏",
       role: "utility",
@@ -28,7 +28,7 @@ export const defaultMartialArts = {
     }),
     art("wuluo-qingyan-zhang", "五罗轻烟掌", "external", "dex", "1d6", "掌影轻快，适合贴身连出。", 0, {
       grade: "熟练",
-      source: "大理段氏",
+      source: "大理旧路",
       role: "utility",
       tags: ["control"],
       effectText: "命中后扰乱敌人下次出手。",
@@ -84,14 +84,14 @@ export const defaultMartialArts = {
     }),
     art("luohan-quan", "罗汉拳", "external", "str", "1d6", "拳势沉稳厚实，适合正面交手。", 0, {
       grade: "入门",
-      source: "少林",
+      source: "少林演武坪",
       role: "pressure",
       tags: ["break"],
       effectText: "正面压制，命中后破防。"
     }),
     art("weituo-chu", "韦陀杵", "external", "str", "1d8", "劲力直贯，讲究一击压人。", 0, {
       grade: "熟练",
-      source: "少林",
+      source: "少林杵法抄录",
       role: "pressure",
       tags: ["break", "guard"],
       effectText: "破防同时稳住自身架势。"
@@ -140,7 +140,7 @@ export const defaultMartialArts = {
       source: "乔峰所传线索",
       role: "finisher",
       tags: ["break", "injure"],
-      effectText: "重压破防；若敌人已有破绽，这一掌更像收束战局的终结手。",
+      effectText: "顶级穿防与内伤压力，真正强处在破防后的收束。",
       effect: { requireEnemyStatus: ["exposed"], bonusDamageAgainstStatus: { exposed: 4 } }
     })
   ],
@@ -176,7 +176,7 @@ export const defaultMartialArts = {
       tags: ["control", "injure"],
       effectText: "控场并提高内伤压力。"
     }),
-    art("zhaixing-shou", "摘星手残式", "external", "dex", "1d10", "从残式里拆出最险的一路探拿锁扣。", 1, {
+    art("zhaixing-shou", "摘星手残式", "external", "dex", "1d10", "从残式里拆出最险的一路探、拿、锁。", 1, {
       grade: "上乘前置",
       source: "星宿秘册残页",
       role: "finisher",
@@ -197,7 +197,7 @@ export const defaultMartialArts = {
       source: "逍遥派残页",
       role: "recovery",
       tags: ["recover", "injure"],
-      effectText: "伤害不高，核心是命中后回气并叠内伤压力，修炼失败风险高。",
+      effectText: "核心是命中后回气并叠内伤压力，修炼失败风险高。",
       effect: { qiGainOnHit: 2, qiDrainOnHit: 1 }
     }),
     art("lingbo-weibu", "凌波微步步图", "external", "dex", "1d4", "步法飘忽，出手如在空隙间穿行。", 1, {
@@ -307,7 +307,7 @@ export const defaultMartialArts = {
       tags: ["pierce", "control"],
       effectText: "穿防控场。"
     }),
-    art("you-bingcan", "冰蚕毒掌", "internal", "con", "2d6", "寒毒透体，掌劲带着黏滞阴寒。", 2, {
+    art("you-bingcan", "冰蚕毒掌", "internal", "con", "2d6", "寒毒透体，掌劲带着黏滞阴毒。", 2, {
       grade: "异门",
       source: "游坦之",
       role: "pressure",
@@ -335,7 +335,7 @@ export const defaultMartialArts = {
       role: "finisher",
       tags: ["pierce", "injure"],
       damageBonus: 2,
-      effectText: "无形刀气穿防，适合作为读招后的爆发，而不是每轮平推。",
+      effectText: "无形刀气穿防，适合作为读招后的爆发。",
       effect: { requireEnemyStatus: ["exposed", "controlled"], bonusDamageAgainstStatus: { exposed: 3, controlled: 2 } }
     }),
     art("jiu-longzhao", "龙爪擒拿", "external", "str", "2d8", "擒、锁、抓一气呵成，逼人近身崩盘。", 0, {
@@ -353,7 +353,7 @@ export const defaultMartialArts = {
       role: "finisher",
       tags: ["pierce", "injure"],
       damageBonus: 2,
-      effectText: "顶级穿防与内伤压力；真正强处在破防和连段资格。",
+      effectText: "顶级穿防与内伤压力，真正强处在破防和连段资格。",
       effect: { bonusDamageAgainstStatus: { exposed: 3, sealed: 3, controlled: 2 } }
     })
   ]

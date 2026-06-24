@@ -7,7 +7,7 @@ export const initialGameState: GameState = {
   setupComplete: false,
   originId: "nameless-wanderer",
   creationMode: "origin",
-  chapter: "第一卷：无量山风波",
+  chapter: "第一章：无量山风波",
   chapterState: {
     id: "nameless-wanderer-ch1",
     stage: "intro"
@@ -28,6 +28,9 @@ export const initialGameState: GameState = {
     "wang-yuyan": "rumored",
     "a-zhu": "hidden",
     "a-zi": "hidden",
+    "jiu-mozhi": "rumored",
+    "you-tanzhi": "hidden",
+    "ding-chunqiu": "hidden",
     "mu-wanqing": "hidden",
     "innkeeper": "available",
     "shuang-er": "hidden"
@@ -69,6 +72,13 @@ export const initialGameState: GameState = {
       stage: "unawakened",
       supportUnlocked: []
     },
+    "a-zi": {
+      npcId: "a-zi",
+      kind: "bond",
+      active: false,
+      stage: "unawakened",
+      supportUnlocked: []
+    },
     "mu-wanqing-romance": {
       npcId: "mu-wanqing",
       kind: "romance",
@@ -89,7 +99,7 @@ export const initialGameState: GameState = {
     {
       id: "m0",
       role: "dm",
-      text: "【说书人】大理城里人声未歇，无量山那边的风波却已经吹到了客栈门口。你先歇脚，先看人，再决定自己要不要踏进这摊麻烦。"
+      text: "【说书人】大理城里人声未歇，无量山那边的风波却已经吹到客栈门口。你先歇脚，先看人，再决定自己要不要踏进这摊麻烦。"
     }
   ],
   combat: { active: false },

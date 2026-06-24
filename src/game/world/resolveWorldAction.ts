@@ -16,10 +16,17 @@ import {
   buildNamelessTutorialObjective,
   isNamelessTutorialCombatStage,
   QUEST_WANDERER_1,
+  QUEST_WANDERER_10,
+  QUEST_WANDERER_11,
+  QUEST_WANDERER_12,
   QUEST_WANDERER_2,
   QUEST_WANDERER_3,
   QUEST_WANDERER_4,
   QUEST_WANDERER_5,
+  QUEST_WANDERER_6,
+  QUEST_WANDERER_7,
+  QUEST_WANDERER_8,
+  QUEST_WANDERER_9,
   resolveNamelessStoryTrigger
 } from "../story/namelessWanderer";
 import { resolveMartialArtStoryAction } from "../story/martialArtRoutes";
@@ -245,6 +252,37 @@ function resolvePendingStoryCheck(
           : { kind: "story_check_failed", checkId: "save_innkeeper" },
         { pendingCheck: undefined }
       )
+    };
+  }
+
+  const namelessCheckIds: Record<string, Parameters<typeof resolveNamelessStoryTrigger>[1]> = {
+    "核对姑苏水路暗记": success
+      ? { kind: "story_check_passed", checkId: "gusu_ledger" }
+      : { kind: "story_check_failed", checkId: "gusu_ledger" },
+    "燕子坞辨招": success
+      ? { kind: "story_check_passed", checkId: "murong_trace" }
+      : { kind: "story_check_failed", checkId: "murong_trace" },
+    "夜探姑苏码头": success
+      ? { kind: "story_check_passed", checkId: "dock_infiltration" }
+      : { kind: "story_check_failed", checkId: "dock_infiltration" },
+    "少室雁门借势": success
+      ? { kind: "story_check_passed", checkId: "shaoshi_yanmen" }
+      : { kind: "story_check_failed", checkId: "shaoshi_yanmen" },
+    "追入星宿海": success
+      ? { kind: "story_check_passed", checkId: "xingxiu_trail" }
+      : { kind: "story_check_failed", checkId: "xingxiu_trail" },
+    "压住寒毒前局": success
+      ? { kind: "story_check_passed", checkId: "han_du" }
+      : { kind: "story_check_failed", checkId: "han_du" },
+    "终战前整备": success
+      ? { kind: "story_check_passed", checkId: "final_prep" }
+      : { kind: "story_check_failed", checkId: "final_prep" }
+  };
+
+  if (label && namelessCheckIds[label]) {
+    return {
+      textId: success ? "story_check_generic_success" : "story_check_generic_fail",
+      patch: resolveStoryPatch(state, globalUpdate, namelessCheckIds[label], { pendingCheck: undefined })
     };
   }
 
@@ -584,14 +622,14 @@ function maybeUseNpcSupport(state: GameState, action: string, globalUpdate: bool
 }
 
 function maybeHandleShuangErInteraction(state: GameState, action: string, globalUpdate: boolean, firstActionPatch?: GamePatch): WorldResolution | undefined {
-  if (state.combat.active || !action.includes("双儿")) return undefined;
+  if (state.combat.active) return undefined;
 
   const stage = routeStage(state, "shuang-er") || "unawakened";
   const shuangEr = state.npcs.find((npc) => npc.id === "shuang-er");
   const canInteract = Boolean(shuangEr?.companion || (shuangEr && (!shuangEr.hidden || shuangEr.discovered) && stage !== "unawakened"));
-  if (!canInteract) return undefined;
+  if (action.includes("双儿") && !canInteract) return undefined;
 
-  if (includesAny(action, SHUANGER_PRACTICE_KEYWORDS)) {
+  if (action.includes("双儿") && includesAny(action, SHUANGER_PRACTICE_KEYWORDS)) {
     const alreadyPracticed = hasStoryFlag(state, `interaction:shuang-er:practice:${state.worldDay}`);
     const patch: GamePatch = alreadyPracticed
       ? {
@@ -613,7 +651,7 @@ function maybeHandleShuangErInteraction(state: GameState, action: string, global
     };
   }
 
-  if (includesAny(action, SHUANGER_TALK_KEYWORDS)) {
+  if (action.includes("双儿") && includesAny(action, SHUANGER_TALK_KEYWORDS)) {
     const alreadyTalked = hasStoryFlag(state, `interaction:shuang-er:talk:${state.worldDay}`);
     const patch: GamePatch = alreadyTalked
       ? {
@@ -639,7 +677,7 @@ function maybeHandleShuangErInteraction(state: GameState, action: string, global
     };
   }
 
-  if (includesAny(action, SHUANGER_HOUSEKEEPING_KEYWORDS)) {
+  if (action.includes("双儿") && includesAny(action, SHUANGER_HOUSEKEEPING_KEYWORDS)) {
     const alreadyPrepared = hasStoryFlag(state, `interaction:shuang-er:housekeeping:${state.worldDay}`);
     const patch: GamePatch = alreadyPrepared
       ? {
@@ -659,6 +697,181 @@ function maybeHandleShuangErInteraction(state: GameState, action: string, global
       patch: withWorldPatch(state, globalUpdate, firstActionPatch, patch),
       meta: { targetName: "双儿", locationName: currentLocationName(state) },
       textOverride: patch.systemNote
+    };
+  }
+
+  const atGusu = currentLocationId(state) === "gusu";
+  const atShaoshi = currentLocationId(state) === "shaoshi";
+  const atYanmen = currentLocationId(state) === "yanmen";
+  const atXingxiu = currentLocationId(state) === "xingxiu";
+  const q6Active = hasQuestStatus(state, QUEST_WANDERER_6, "active");
+  const q7Active = hasQuestStatus(state, QUEST_WANDERER_7, "active");
+  const q8Active = hasQuestStatus(state, QUEST_WANDERER_8, "active");
+  const q9Active = hasQuestStatus(state, QUEST_WANDERER_9, "active");
+  const q10Active = hasQuestStatus(state, QUEST_WANDERER_10, "active");
+  const q11Active = hasQuestStatus(state, QUEST_WANDERER_11, "active");
+  const q12Active = hasQuestStatus(state, QUEST_WANDERER_12, "active");
+
+  if (
+    atGusu &&
+    q6Active &&
+    includesAny(action, ["阿朱", "王语嫣", "水路", "暗记", "账页", "核对", "姑苏", "接头"])
+  ) {
+    return {
+      textId: "default_scene",
+      textOverride: "阿朱把水路记号一处处点给你看，王语嫣则从账页边角的伤痕与墨迹里辨出武学来路。此事要先核对清楚，才好继续往燕子坞深处走。",
+      patch: resolveStoryPatch(state, globalUpdate, { kind: "story_check_requested", checkId: "gusu_ledger" }, firstActionPatch)
+    };
+  }
+
+  if (
+    atGusu &&
+    q7Active &&
+    includesAny(action, ["王语嫣", "燕子坞", "辨招", "慕容", "参合", "鸠摩智", "星宿", "小无相"])
+  ) {
+    return {
+      textId: "default_scene",
+      textOverride: "燕子坞水榭静得出奇，王语嫣把剑痕、指劲、毒掌与吐蕃内劲分作几路。她不是替你打这一架，而是替你看清将来会遇见什么。",
+      patch: resolveStoryPatch(state, globalUpdate, { kind: "story_check_requested", checkId: "murong_trace" }, firstActionPatch)
+    };
+  }
+
+  if (
+    atGusu &&
+    q8Active &&
+    !state.combat.active &&
+    includesAny(action, ["码头", "夜探", "潜入", "接头", "英雄帖", "伪稿", "密册", "残页"])
+  ) {
+    return {
+      textId: "default_scene",
+      textOverride: "姑苏码头夜雾压水，接头人只露半张脸。你若能潜得近些，便能拿到英雄帖伪稿和星宿密册残页；若惊动他们，就只能硬闯。",
+      patch: resolveStoryPatch(state, globalUpdate, { kind: "story_check_requested", checkId: "dock_infiltration" }, firstActionPatch)
+    };
+  }
+
+  if (
+    atGusu &&
+    q8Active &&
+    !state.combat.active &&
+    includesAny(action, ["暴露", "开打", "动手", "迎战", "刺客", "强闯"])
+  ) {
+    return {
+      textId: "default_scene",
+      textOverride: "水雾里刀光一翻，姑苏码头刺客已经发现你。线索还在他身后，此刻退不得。",
+      patch: withWorldPatch(state, globalUpdate, startCombat(state, "gusu-dock-assassin"), firstActionPatch)
+    };
+  }
+
+  if (
+    (atShaoshi || atYanmen) &&
+    q9Active &&
+    includesAny(action, ["虚竹", "少室", "少林", "乔峰", "雁门", "借势", "英雄帖", "内功", "破局"])
+  ) {
+    return {
+      textId: "default_scene",
+      textOverride: "少室的钟声与雁门的风沙隔得很远，却都压着同一条线。虚竹能给你稳内息的门路，乔峰能替你判断星宿海这一局该如何正面破开。",
+      patch: resolveStoryPatch(state, globalUpdate, { kind: "story_check_requested", checkId: "shaoshi_yanmen" }, firstActionPatch)
+    };
+  }
+
+  if (
+    atXingxiu &&
+    q10Active &&
+    includesAny(action, ["信阿紫", "相信阿紫", "先信她", "信她"])
+  ) {
+    return {
+      textId: "default_scene",
+      textOverride: "阿紫眼神一转，像是不信世上真有人肯先信她一回。她没有谢你，只把星宿护法巡路的缺口点了出来。",
+      patch: resolveStoryPatch(state, globalUpdate, { kind: "story_choice", choiceId: "trust_a_zi" }, firstActionPatch)
+    };
+  }
+
+  if (
+    atXingxiu &&
+    q10Active &&
+    includesAny(action, ["利用阿紫", "用阿紫", "互相利用", "借阿紫"])
+  ) {
+    return {
+      textId: "default_scene",
+      textOverride: "你和阿紫都明白，眼下谁也不是谁的靠山，只是这条毒雾里的路，暂时需要两个人一同走。",
+      patch: resolveStoryPatch(state, globalUpdate, { kind: "story_choice", choiceId: "use_a_zi" }, firstActionPatch)
+    };
+  }
+
+  if (
+    atXingxiu &&
+    q10Active &&
+    includesAny(action, ["防阿紫", "防着阿紫", "提防阿紫", "不信阿紫"])
+  ) {
+    return {
+      textId: "default_scene",
+      textOverride: "你防着阿紫，阿紫也笑着防你。少一分被她牵着走的风险，也少一分她愿意吐露的捷径。",
+      patch: resolveStoryPatch(state, globalUpdate, { kind: "story_choice", choiceId: "guard_a_zi" }, firstActionPatch)
+    };
+  }
+
+  if (
+    atXingxiu &&
+    q10Active &&
+    includesAny(action, ["星宿", "毒雾", "追线", "密册", "残页", "阿紫", "游坦之", "寒毒"])
+  ) {
+    return {
+      textId: "default_scene",
+      textOverride: "星宿海的风里带着甜腥味，阿紫的话真假掺半，游坦之的寒毒却是实实在在。先把路追准，才不会被毒雾绕死。",
+      patch: resolveStoryPatch(state, globalUpdate, { kind: "story_check_requested", checkId: "xingxiu_trail" }, firstActionPatch)
+    };
+  }
+
+  if (
+    atXingxiu &&
+    q11Active &&
+    !state.combat.active &&
+    includesAny(action, ["游坦之", "寒毒", "星宿护法", "护法", "压住", "动手", "开战"])
+  ) {
+    const enemyId = includesAny(action, ["护法", "星宿护法"]) ? "xingxiu-guardian" : "you-tanzhi-final";
+    return {
+      textId: "default_scene",
+      textOverride: enemyId === "xingxiu-guardian"
+        ? "星宿护法毒掌横拦，显然不想让你活着见到丁春秋。"
+        : "游坦之寒毒缠身，招式不成章法，却每一步都像冰钉扎进地里。你得先压住这一局，才逼得出丁春秋。",
+      patch: withWorldPatch(state, globalUpdate, startCombat(state, enemyId), firstActionPatch)
+    };
+  }
+
+  if (
+    atXingxiu &&
+    q11Active &&
+    includesAny(action, ["化功", "残篇", "残页", "护心", "解毒", "整备", "准备"])
+  ) {
+    return {
+      textId: "default_scene",
+      textOverride: "化功残篇只露一角，却足够看出丁春秋破人内息的门道。你先稳住寒毒，才有资格谈终局。",
+      patch: resolveStoryPatch(state, globalUpdate, { kind: "story_check_requested", checkId: "han_du" }, firstActionPatch)
+    };
+  }
+
+  if (
+    atXingxiu &&
+    q12Active &&
+    includesAny(action, ["准备", "整备", "护心", "解毒", "化功残篇", "终战准备"])
+  ) {
+    return {
+      textId: "default_scene",
+      textOverride: "终战前最怕心气浮动。你把护心解毒散、化功残篇、可用同伴与身上武学一一理过，免得一入毒雾便乱。",
+      patch: resolveStoryPatch(state, globalUpdate, { kind: "story_check_requested", checkId: "final_prep" }, firstActionPatch)
+    };
+  }
+
+  if (
+    atXingxiu &&
+    q12Active &&
+    !state.combat.active &&
+    includesAny(action, ["丁春秋", "终战", "迎战", "决战", "开打", "动手"])
+  ) {
+    return {
+      textId: "default_scene",
+      textOverride: "星宿弟子的怪笑忽然低了下去。毒雾后面，丁春秋终于亲自下场。",
+      patch: withWorldPatch(state, globalUpdate, startCombat(state, "ding-chunqiu-final"), firstActionPatch)
     };
   }
 

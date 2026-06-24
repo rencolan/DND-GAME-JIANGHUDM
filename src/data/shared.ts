@@ -54,19 +54,22 @@ export const defaultInventory = () => ([
     type: "consumable",
     usable: true,
     hpRestore: 6,
-    combatActionCost: 1
+    combatActionCost: 1,
+    value: 16
   }),
   item("qi-pill", "行气散", "恢复 2 点真气。战斗中使用会让出这一手。", 1, {
     type: "consumable",
     usable: true,
     qiRestore: 2,
-    combatActionCost: 1
+    combatActionCost: 1,
+    value: 14
   }),
-  item("smoke-pellet", "烟雾丸", "掷地起烟，战斗中使用后获得掩护，使敌人下一击明显失准。", 1, {
+  item("smoke-pellet", "烟雾丸", "掷地起烟。战斗中使用后获得掩护，并使敌人下一击更容易失准。", 1, {
     type: "consumable",
     usable: true,
     grantsStatus: ["screened"],
-    combatActionCost: 1
+    combatActionCost: 1,
+    value: 22
   })
 ]);
 

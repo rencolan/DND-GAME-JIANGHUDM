@@ -73,7 +73,13 @@ function normalizeStoryFlags(raw: string[] | undefined, fallback: string[] = [])
 }
 
 function normalizeChapterState(raw: Partial<ChapterState> | undefined, fallback: ChapterState): ChapterState {
-  return normalizeChapterStateForNameless(raw, fallback);
+  if (raw?.id === "nameless-wanderer-ch1" || fallback.id === "nameless-wanderer-ch1") {
+    return normalizeChapterStateForNameless(raw as ChapterState | undefined);
+  }
+  return {
+    ...fallback,
+    ...(raw || {})
+  };
 }
 
 function normalizeQuestStateMap(quests: Quest[], raw: GameState["questStateMap"] | undefined) {

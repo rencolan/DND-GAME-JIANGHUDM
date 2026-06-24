@@ -36,7 +36,11 @@ export type NamelessWandererChapterStage =
   | "to_gusu"
   | "gusu_investigation"
   | "dock_infiltration"
-  | "chapter_resolved";
+  | "shaoshi_yanmen_prelude"
+  | "xingxiu_pursuit"
+  | "final_confrontation"
+  | "chapter_resolved"
+  | "ending_resolved";
 export type LocalStoryTrigger =
   | "onFirstAction"
   | "onQuestResolved"

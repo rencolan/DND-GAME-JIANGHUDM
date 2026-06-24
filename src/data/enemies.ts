@@ -53,6 +53,20 @@ export const enemyPresets: EnemyPreset[] = [
     tags: ["前期试探", "快攻"]
   },
   {
+    id: "gusu-dock-assassin",
+    name: "姑苏码头刺客",
+    hp: 30,
+    maxHp: 30,
+    qi: 5,
+    maxQi: 5,
+    ac: 13,
+    archetype: "assassin",
+    intent: "借水雾贴身偷袭，抢走接头账册。",
+    abilities: { str: 12, dex: 15, con: 12, int: 12, cha: 9, wis: 11 },
+    martialArts: [...defaultMartialArts.enemy, defaultMartialArts.villains.find((entry) => entry.id === "heshe-bada")!],
+    tags: ["姑苏线", "码头接头", "快攻"]
+  },
+  {
     id: "zuo-zimu",
     name: "左子穆",
     hp: 30,
@@ -95,18 +109,18 @@ export const enemyPresets: EnemyPreset[] = [
     tags: ["高机动刺客", "四大恶人", "诡快"]
   },
   {
-    id: "ding-chunqiu",
-    name: "丁春秋",
-    hp: 48,
-    maxHp: 48,
-    qi: 12,
-    maxQi: 12,
-    ac: 15,
+    id: "xingxiu-guardian",
+    name: "星宿护法",
+    hp: 38,
+    maxHp: 38,
+    qi: 7,
+    maxQi: 7,
+    ac: 13,
     archetype: "poisoner",
-    intent: "先以毒雾和化功乱你的内息，再找封脉的空门。",
-    abilities: { str: 12, dex: 14, con: 14, int: 18, cha: 13, wis: 16 },
-    martialArts: defaultMartialArts.bosses.filter((entry) => ["ding-huagong", "ding-sanxiao", "ding-zhaixing"].includes(entry.id)),
-    tags: ["邪门宗师", "毒功", "控场"]
+    intent: "先以毒雾乱气，再让你错步露门。",
+    abilities: { str: 12, dex: 13, con: 14, int: 13, cha: 9, wis: 13 },
+    martialArts: defaultMartialArts.xingxiu.filter((entry) => ["xingxiu-duzhang", "sanyin-wugong-zhua"].includes(entry.id)),
+    tags: ["星宿海", "毒功", "终章前哨"]
   },
   {
     id: "you-tanzhi",
@@ -123,6 +137,48 @@ export const enemyPresets: EnemyPreset[] = [
     tags: ["寒毒缠斗", "重压", "内伤"]
   },
   {
+    id: "you-tanzhi-final",
+    name: "寒毒游坦之",
+    hp: 50,
+    maxHp: 50,
+    qi: 12,
+    maxQi: 12,
+    ac: 15,
+    archetype: "internalist",
+    intent: "寒毒入骨，越伤越不退，想把你拖到真气紊乱。",
+    abilities: { str: 16, dex: 13, con: 17, int: 9, cha: 8, wis: 12 },
+    martialArts: defaultMartialArts.bosses.filter((entry) => ["you-bingcan", "you-tietou", "you-shengsi"].includes(entry.id)),
+    tags: ["终章强敌", "寒毒", "高韧性"]
+  },
+  {
+    id: "ding-chunqiu",
+    name: "丁春秋",
+    hp: 48,
+    maxHp: 48,
+    qi: 12,
+    maxQi: 12,
+    ac: 15,
+    archetype: "poisoner",
+    intent: "先以毒雾和化功乱你的内息，再找封脉的空门。",
+    abilities: { str: 12, dex: 14, con: 14, int: 18, cha: 13, wis: 16 },
+    martialArts: defaultMartialArts.bosses.filter((entry) => ["ding-huagong", "ding-sanxiao", "ding-zhaixing"].includes(entry.id)),
+    tags: ["邪门宗师", "毒功", "控场"]
+  },
+  {
+    id: "ding-chunqiu-final",
+    name: "丁春秋",
+    hp: 66,
+    maxHp: 66,
+    qi: 18,
+    maxQi: 18,
+    ac: 16,
+    archetype: "boss",
+    intent: "毒雾、化功和摘星手连环压上，逼你在内息未乱前定胜负。",
+    abilities: { str: 13, dex: 15, con: 15, int: 19, cha: 14, wis: 17 },
+    martialArts: defaultMartialArts.bosses.filter((entry) => ["ding-huagong", "ding-sanxiao", "ding-zhaixing"].includes(entry.id)),
+    tags: ["终章宗师", "化功", "高压控场"]
+  },
+  {
     id: "jiu-mozhi",
     name: "鸠摩智",
     hp: 56,
@@ -137,6 +193,6 @@ export const enemyPresets: EnemyPreset[] = [
       ...defaultMartialArts.bosses.filter((entry) => ["jiu-huoyandao", "jiu-longzhao"].includes(entry.id)),
       defaultMartialArts.xiaoyao.find((entry) => entry.id === "xiaowuxiang-gong")!
     ],
-    tags: ["终局宗师", "高内力", "爆发"]
+    tags: ["宗师压力", "高内力", "可选挑战"]
   }
 ];

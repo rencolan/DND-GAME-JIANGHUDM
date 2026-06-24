@@ -31,14 +31,17 @@ const innkeeperNpc: Npc = {
 export const npcs: Npc[] = [
   innkeeperNpc,
   { id: "duan-yu", name: "段誉", title: "大理世子", portrait: portrait("duan-yu"), location: "无量山", goal: "误入山中乱局，还想护着身边的人", attitude: "温雅", relationship: 48, lastSeen: "无量山山道", status: "未现身", tags: ["大理", "世族"], companion: false, hidden: true, discovered: false },
-  { id: "qiao-feng", name: "乔峰", title: "丐帮帮主", portrait: portrait("qiao-feng"), location: "雁门关", goal: "追查边关旧案", attitude: "敬重", relationship: 58, lastSeen: "北地酒肆", status: "远行", tags: ["丐帮", "豪侠"], companion: false },
-  { id: "murong-fu", name: "慕容复", title: "姑苏公子", portrait: portrait("murong-fu"), location: "姑苏", goal: "寻找英雄帖背后的势力", attitude: "试探", relationship: 38, lastSeen: "燕子坞水榭", status: "观望", tags: ["姑苏", "世家"], companion: false },
-  { id: "xu-zhu", name: "虚竹", title: "少林弟子", portrait: portrait("xu-zhu"), location: "少室山", goal: "护送寺中密件", attitude: "和善", relationship: 50, lastSeen: "寺外石阶", status: "未会合", tags: ["少林"], companion: false },
-  { id: "wang-yuyan", name: "王语嫣", title: "琅嬛书影", portrait: portrait("wang-yuyan"), location: "姑苏", goal: "辨认银针上的武学门路", attitude: "谨慎", relationship: 46, lastSeen: "藏书楼", status: "可请教", tags: ["武学"], companion: false },
-  { id: "a-zhu", name: "阿朱", title: "易容巧手", portrait: portrait("a-zhu"), location: "大理城", goal: "打探黑衣人的真实身份", attitude: "亲近", relationship: 62, lastSeen: "城南茶肆", status: "暗访", tags: ["潜入"], companion: false },
-  { id: "a-zi", name: "阿紫", title: "星宿门下", portrait: portrait("a-zi"), location: "星宿海", goal: "盯住值得利用的人与物", attitude: "乖张", relationship: 24, lastSeen: "毒雾边市", status: "行踪不定", tags: ["星宿", "毒"], companion: false, hidden: true, discovered: false },
-  { id: "mu-wanqing", name: "木婉清", title: "黑衣箭影", portrait: portrait("mu-wanqing"), location: "无量山", goal: "拦着段誉突围，不让追兵靠近半步", attitude: "冷硬", relationship: 60, lastSeen: "无量山山道", status: "未现身", tags: ["追踪"], companion: false, hidden: true, discovered: false },
-  { id: "shuang-er", name: "双儿", title: "温柔侍女", portrait: portrait("shuang-er"), location: "大理城", goal: "照看你和客栈，也把一身护主短打、针线药理和细密心思都藏在安静处", attitude: "温柔", relationship: 58, lastSeen: "客栈后院", status: "在客栈帮忙，手边常备针线药囊", tags: ["客栈", "疗伤", "细心", "护主", "短打"], companion: false, hidden: true, discovered: false, recruitable: false }
+  { id: "qiao-feng", name: "乔峰", title: "丐帮帮主", portrait: portrait("qiao-feng"), location: "雁门关", goal: "追查边关旧案，也留意星宿与英雄帖的动静", attitude: "敬重", relationship: 58, lastSeen: "北地酒肆", status: "远行", tags: ["丐帮", "豪侠"], companion: false },
+  { id: "murong-fu", name: "慕容复", title: "姑苏公子", portrait: portrait("murong-fu"), location: "姑苏", goal: "寻找英雄帖背后的势力，也试探来客分量", attitude: "试探", relationship: 38, lastSeen: "燕子坞水榭", status: "观望", tags: ["姑苏", "世家"], companion: false },
+  { id: "xu-zhu", name: "虚竹", title: "少林弟子", portrait: portrait("xu-zhu"), location: "少室山", goal: "护送寺中密信，不愿看无辜人卷入毒局", attitude: "和善", relationship: 50, lastSeen: "寺外石阶", status: "未会合", tags: ["少林"], companion: false },
+  { id: "wang-yuyan", name: "王语嫣", title: "琅嬛书影", portrait: portrait("wang-yuyan"), location: "姑苏", goal: "辨认银针、刀气与毒功背后的武学门路", attitude: "谨慎", relationship: 46, lastSeen: "藏书楼", status: "可请教", tags: ["武学"], companion: false },
+  { id: "a-zhu", name: "阿朱", title: "易容巧手", portrait: portrait("a-zhu"), location: "大理城", goal: "打探黑衣人的真实身份，替水路暗记找源头", attitude: "亲近", relationship: 62, lastSeen: "城南茶肆", status: "暗访", tags: ["潜入"], companion: false },
+  { id: "a-zi", name: "阿紫", title: "星宿门下", portrait: portrait("a-zi"), location: "星宿海", goal: "盯住值得利用的人与物，也替自己找退路", attitude: "乖张", relationship: 24, lastSeen: "毒雾边市", status: "行踪不定", tags: ["星宿", "毒"], companion: false, hidden: true, discovered: false },
+  { id: "jiu-mozhi", name: "鸠摩智", title: "吐蕃国师", portrait: portrait("jiu-mozhi"), location: "姑苏", goal: "以火焰刀与小无相功压场，试探中原武学虚实", attitude: "高压", relationship: 20, lastSeen: "姑苏水路", status: "只作高阶压力，不强制开战", tags: ["宗师", "吐蕃", "火焰刀"], companion: false, hidden: false, discovered: true },
+  { id: "you-tanzhi", name: "游坦之", title: "寒毒怪客", portrait: portrait("you-tanzhi"), location: "星宿海", goal: "被寒毒与执念推着走，成了星宿局中一枚极危险的棋", attitude: "混乱", relationship: 18, lastSeen: "星宿毒雾", status: "尚未露面", tags: ["寒毒", "强敌"], companion: false, hidden: true, discovered: false },
+  { id: "ding-chunqiu", name: "丁春秋", title: "星宿老怪", portrait: portrait("ding-chunqiu"), location: "星宿海", goal: "收束英雄帖伪稿与星宿密册残页，逼江湖各路替他扬名", attitude: "阴狠", relationship: 5, lastSeen: "星宿海深处", status: "终章前不亲自下场", tags: ["宗师", "星宿", "终章Boss"], companion: false, hidden: true, discovered: false },
+  { id: "mu-wanqing", name: "木婉清", title: "黑衣箭影", portrait: portrait("mu-wanqing"), location: "无量山", goal: "拦着段誉突围，不让追兵靠近半步", attitude: "冷硬", relationship: 60, lastSeen: "无量山山道", status: "未现身", tags: ["追逐"], companion: false, hidden: true, discovered: false },
+  { id: "shuang-er", name: "双儿", title: "温柔侍女", portrait: portrait("shuang-er"), location: "大理城", goal: "照看你和客栈，也把护主短打、针线药理和细密心思都藏在安静处", attitude: "温柔", relationship: 58, lastSeen: "客栈后院", status: "在客栈帮忙，手边常备针线药囊", tags: ["客栈", "疗伤", "细心", "护主", "短打"], companion: false, hidden: true, discovered: false, recruitable: false }
 ];
 
 export const merchantProfiles: MerchantProfile[] = [
@@ -128,23 +131,32 @@ export const stealProfiles: StealProfile[] = [
     threatTier: "normal",
     pocketSilver: 10,
     pocketItems: [
-      { itemId: "tea-brick", count: 1 },
       { itemId: "shaolin-sealed-letter", count: 1 }
     ],
-    exposure: "watched",
-    failureRelationshipPenalty: 10
+    exposure: "private",
+    failureRelationshipPenalty: 8
   },
   {
     npcId: "qiao-feng",
     threatTier: "master",
-    pocketSilver: 54,
+    pocketSilver: 22,
     pocketItems: [
-      { itemId: "tea-brick", count: 1 },
-      { itemId: "silk-pouch", count: 1 },
       { itemId: "yanmen-old-token", count: 1 }
     ],
     exposure: "crowded",
-    failureRelationshipPenalty: 18
+    failureRelationshipPenalty: 24
+  },
+  {
+    npcId: "a-zi",
+    threatTier: "elite",
+    pocketSilver: 18,
+    pocketItems: [
+      { itemId: "xingxiu-secret-page", count: 1 },
+      { itemId: "antidote-pill", count: 1 }
+    ],
+    exposure: "watched",
+    failureRelationshipPenalty: 18,
+    failureCombatEnemyId: "xingxiu-guardian"
   }
 ];
 
@@ -153,7 +165,7 @@ export function buildInitialEconomyState(): EconomyState {
     merchantStocks: Object.fromEntries(
       merchantProfiles.map((profile) => [
         profile.npcId,
-        Object.fromEntries(profile.stock.map((entry) => [entry.itemId, entry.count]))
+        Object.fromEntries(profile.stock.map((stock) => [stock.itemId, stock.count]))
       ])
     ),
     merchantBlockedUntilDay: {},
