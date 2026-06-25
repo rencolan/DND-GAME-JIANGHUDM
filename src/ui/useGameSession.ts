@@ -89,6 +89,7 @@ import {
   normalizeApiConfig,
   readJson
 } from "./sessionShared";
+import { recordDiagnostic, safeLocalStorageRemove, safeLocalStorageSet } from "./diagnostics";
 import { buildCharacterFromOrigin } from "./setupHelpers";
 
 type AiCallResult = {
@@ -377,16 +378,44 @@ function rollModeInstruction(mode?: PendingCheck["rollMode"]) {
   return "常规，掷 1d20";
 }
 
+const CLEAN_ABILITY_LABELS: Record<string, string> = {
+  str: "力道",
+  dex: "身法",
+  con: "根骨",
+  int: "悟性",
+  cha: "气运",
+  wis: "心境"
+};
+
+function cleanAbilityLabel(key?: string) {
+  return (key && CLEAN_ABILITY_LABELS[key]) || key || "对应属性";
+}
+
 function buildPendingCheckInstruction(state: GameState, check?: PendingCheck) {
   if (!check) return "";
 
-  const abilityLabel = state.character.abilities.find((ability) => ability.key === check.abilityKey)?.label
-    || check.abilityKey
-    || "对应属性";
+  const abilityLabel = cleanAbilityLabel(check.abilityKey);
   const lines = [
     `【判定】${check.label}`,
     `请进行 ${abilityLabel} 判定，DC ${check.dc}；${rollModeInstruction(check.rollMode)}。`,
     "操作：可直接点击底部“掷判定”，或打开骰子面板后再掷。",
+    check.reason ? `理由：${check.reason}` : undefined,
+    check.risk ? `失败风险：${check.risk}` : undefined
+  ].filter(Boolean);
+
+  return lines.join("\n");
+}
+
+function buildPendingCheckBlockedInstruction(state: GameState, attemptedAction: string) {
+  const check = state.pendingCheck;
+  if (!check) return "";
+
+  const abilityLabel = cleanAbilityLabel(check.abilityKey);
+  const lines = [
+    `【待判定】${check.label}`,
+    `当前剧情已经停在这次判定上，刚才的行动“${attemptedAction}”不会另行结算。`,
+    `要求：${abilityLabel} 判定，DC ${check.dc}；${rollModeInstruction(check.rollMode)}。`,
+    "下一步：点击底部“掷判定”，或在已打开的骰子面板里点击推荐骰。",
     check.reason ? `理由：${check.reason}` : undefined,
     check.risk ? `失败风险：${check.risk}` : undefined
   ].filter(Boolean);
@@ -624,6 +653,7 @@ function resolveDeathOutcome(before: GameState, after: GameState, actionText: st
 
 export function useGameSession() {
   const savedGame = readJson<GameState>(SAVE_KEY, initialGameState);
+  const legacySavedGame = readJson<GameState | undefined>(SAVE_KEY, undefined);
   const initialApi = readJson<ApiConfig>(API_KEY, defaultApiConfig("openai"));
 
   const [game, setGame] = useState<GameState>(() => normalizeGameState(savedGame));
@@ -699,13 +729,13 @@ export function useGameSession() {
 
       if (storedGame) {
         setGame(normalizeGameState(storedGame));
-      } else if (localStorage.getItem(SAVE_KEY)) {
-        await writePersistentValue(SAVE_KEY, trimStateHistory(normalizeGameState(savedGame), {
+      } else if (legacySavedGame) {
+        await writePersistentValue(SAVE_KEY, trimStateHistory(normalizeGameState(legacySavedGame), {
           messages: MAX_PERSISTED_MESSAGES,
           systemLog: MAX_PERSISTED_SYSTEM_LOG
         }));
         if (supportsPersistentIndexedDb()) {
-          localStorage.removeItem(SAVE_KEY);
+          safeLocalStorageRemove(SAVE_KEY);
         }
       }
 
@@ -726,11 +756,15 @@ export function useGameSession() {
       void writePersistentValue(SAVE_KEY, trimStateHistory(normalizeGameState(game), {
         messages: MAX_PERSISTED_MESSAGES,
         systemLog: MAX_PERSISTED_SYSTEM_LOG
-      })).then(() => {
-        if (supportsPersistentIndexedDb()) {
-          localStorage.removeItem(SAVE_KEY);
-        }
-      });
+      }))
+        .then(() => {
+          if (supportsPersistentIndexedDb()) {
+            safeLocalStorageRemove(SAVE_KEY);
+          }
+        })
+        .catch((error) => {
+          recordDiagnostic("storage", "自动存档失败", error instanceof Error ? error.message : String(error));
+        });
     }, 220);
 
     return () => {
@@ -739,23 +773,23 @@ export function useGameSession() {
   }, [game, storageHydrated]);
 
   useEffect(() => {
-    localStorage.setItem(API_KEY, JSON.stringify(api));
+    safeLocalStorageSet(API_KEY, JSON.stringify(api));
   }, [api]);
 
   useEffect(() => {
-    localStorage.setItem(BGM_KEY, JSON.stringify(musicEnabled));
+    safeLocalStorageSet(BGM_KEY, JSON.stringify(musicEnabled));
   }, [musicEnabled]);
 
   useEffect(() => {
-    localStorage.setItem(BGM_VOLUME_KEY, JSON.stringify(bgmVolume));
+    safeLocalStorageSet(BGM_VOLUME_KEY, JSON.stringify(bgmVolume));
   }, [bgmVolume]);
 
   useEffect(() => {
-    localStorage.setItem(SFX_KEY, JSON.stringify(sfxEnabled));
+    safeLocalStorageSet(SFX_KEY, JSON.stringify(sfxEnabled));
   }, [sfxEnabled]);
 
   useEffect(() => {
-    localStorage.setItem(SFX_VOLUME_KEY, JSON.stringify(sfxVolume));
+    safeLocalStorageSet(SFX_VOLUME_KEY, JSON.stringify(sfxVolume));
   }, [sfxVolume]);
 
   useEffect(() => {
@@ -1160,12 +1194,16 @@ export function useGameSession() {
     lockUi(1400);
     closePanels();
     setGame((prev) => normalizeGameState({ ...prev, setupComplete: true }));
-    localStorage.setItem(SETUP_KEY, "1");
+    safeLocalStorageSet(SETUP_KEY, "1");
     tryPlayMusic();
   }
 
   function exportSave() {
-    const save = JSON.stringify(normalizeGameState(game), null, 2);
+    const saveState = trimStateHistory(normalizeGameState(game), {
+      messages: MAX_PERSISTED_MESSAGES,
+      systemLog: MAX_PERSISTED_SYSTEM_LOG
+    });
+    const save = JSON.stringify(saveState, null, 2);
     const blob = new Blob(["\uFEFF", save], { type: "application/json;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -1173,10 +1211,11 @@ export function useGameSession() {
     link.download = `jianghu-dm-save-day-${game.worldDay}.json`;
     link.click();
     URL.revokeObjectURL(url);
+    recordDiagnostic("storage", "导出存档", `messages=${saveState.messages.length}, log=${saveState.systemLog?.length || 0}`);
   }
 
   function resetGame() {
-    localStorage.removeItem(SETUP_KEY);
+    safeLocalStorageRemove(SETUP_KEY);
     removeCheckpoint(COMBAT_CHECKPOINT_KEY);
     removeCheckpoint(ACTION_CHECKPOINT_KEY);
     void deletePersistentValue(SAVE_KEY);
@@ -1527,6 +1566,24 @@ export function useGameSession() {
     if (!text || busy) return;
     if (game.character.hp <= 0) {
       pushSystemMessage("【死亡结算】你已死亡，不能继续普通行动。请回到战前/行动前，或重新开始。");
+      return;
+    }
+    if (!game.combat.active && game.pendingCheck) {
+      tryPlayMusic();
+      closePanels();
+      setInput("");
+      setDiceOpen(true);
+      setGame((prev) => {
+        const reminder = buildPendingCheckBlockedInstruction(prev, text);
+        const lastMessage = prev.messages[prev.messages.length - 1];
+        const shouldAppendReminder = lastMessage?.role !== "system" || !lastMessage.text.startsWith("【待判定】");
+        return {
+          ...prev,
+          messages: shouldAppendReminder
+            ? [...prev.messages, { id: uid("player"), role: "player", text }, { id: uid("system"), role: "system", text: reminder }]
+            : [...prev.messages.slice(0, -1), { ...lastMessage, text: reminder }]
+        };
+      });
       return;
     }
     if (game.pendingDamage) {
@@ -2306,7 +2363,7 @@ export function useGameSession() {
         removeCheckpoint(COMBAT_CHECKPOINT_KEY);
         removeCheckpoint(ACTION_CHECKPOINT_KEY);
         setGame(normalizeGameState(imported));
-        localStorage.setItem(SETUP_KEY, "1");
+        safeLocalStorageSet(SETUP_KEY, "1");
       } catch {
         setGame((prev) => ({
           ...prev,
@@ -2394,7 +2451,7 @@ export function useGameSession() {
       systemLog: ["无名客旧事已展开，进入教学战斗后才会接回正式开场。"]
     }));
 
-    localStorage.setItem(SETUP_KEY, "1");
+    safeLocalStorageSet(SETUP_KEY, "1");
     tryPlayMusic();
   }
 

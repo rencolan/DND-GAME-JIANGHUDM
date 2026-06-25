@@ -46,6 +46,7 @@ function makePendingCheck(raw: GamePatch["pendingCheck"]): PendingCheck | undefi
   if (!raw?.label || typeof raw.dc !== "number") return undefined;
   return {
     id: uid("check"),
+    checkId: raw.checkId,
     kind: raw.kind,
     label: raw.label,
     abilityKey: raw.abilityKey,

@@ -91,6 +91,47 @@ test("generic look action creates a pending wisdom check", () => {
   assert.equal(result.patch.pendingCheck?.abilityKey, "wis");
 });
 
+test("world pending checks survive non-combat state normalization", () => {
+  const state = cloneState();
+  const patched = applyPatchToState(state, {
+    pendingCheck: {
+      kind: "world",
+      label: "替客栈压住前堂乱局",
+      abilityKey: "cha",
+      dc: 12,
+      reason: "前堂后院都有人心浮动，你得先把场面压住。",
+      checkId: "steady_inn"
+    }
+  });
+
+  assert.ok(patched.pendingCheck);
+  assert.equal(patched.pendingCheck?.kind, "world");
+  assert.equal(patched.pendingCheck?.checkId, "steady_inn");
+});
+
+test("combat pending checks still clear when combat ends", () => {
+  const state = normalizeGameState({
+    ...cloneState(),
+    combat: {
+      ...cloneState().combat,
+      active: false,
+      phase: "ended"
+    },
+    pendingCheck: {
+      id: "check-combat",
+      kind: "combat_attack",
+      label: "出手",
+      abilityKey: "str",
+      dc: 11,
+      reason: "先手压制。",
+      checkId: "combat_hit"
+    }
+  });
+  const patched = applyPatchToState(state, {});
+
+  assert.equal(patched.pendingCheck, undefined);
+});
+
 test("world check dc responds to clue quality and method", () => {
   const clear = resolveWorldAction("我蹲下细看新鲜足迹，拨开草叶沿着泥印查看", cloneState(), false);
   const faint = resolveWorldAction("我匆匆查看被雨水冲散的半枚鞋印", cloneState(), false);

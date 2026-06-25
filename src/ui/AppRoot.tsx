@@ -1,10 +1,29 @@
+import { useEffect } from "react";
 import { useGameSession } from "./useGameSession";
 import { SetupScreen } from "./components/SetupScreen";
 import { GameScreen } from "./components/GameScreen";
 import { DiceRollOverlay } from "./components/DiceRollOverlay";
+import { recordDiagnostic } from "./diagnostics";
 
 export function AppRoot() {
   const session = useGameSession();
+
+  useEffect(() => {
+    const handleError = (event: ErrorEvent) => {
+      recordDiagnostic("error", event.message || "window.error", event.error instanceof Error ? event.error.stack : event.filename);
+    };
+    const handleRejection = (event: PromiseRejectionEvent) => {
+      const reason = event.reason instanceof Error ? event.reason.message : String(event.reason);
+      recordDiagnostic("rejection", reason, event.reason instanceof Error ? event.reason.stack : undefined);
+    };
+
+    window.addEventListener("error", handleError);
+    window.addEventListener("unhandledrejection", handleRejection);
+    return () => {
+      window.removeEventListener("error", handleError);
+      window.removeEventListener("unhandledrejection", handleRejection);
+    };
+  }, []);
 
   if (!session.storageHydrated) {
     return (

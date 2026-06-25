@@ -287,6 +287,7 @@ export interface Rumor {
 
 export interface PendingCheck {
   id: string;
+  checkId?: string;
   kind?: PendingCheckKind;
   label: string;
   abilityKey?: string;

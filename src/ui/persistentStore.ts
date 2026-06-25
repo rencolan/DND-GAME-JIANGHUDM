@@ -1,3 +1,5 @@
+import { recordDiagnostic } from "./diagnostics";
+
 const DB_NAME = "jianghu-dm-storage-v1";
 const STORE_NAME = "kv";
 const keyOperationQueue = new Map<string, Promise<void>>();
@@ -14,7 +16,8 @@ function fallbackRead<T>(key: string) {
   try {
     const raw = localStorage.getItem(key);
     return raw ? (JSON.parse(raw) as T) : undefined;
-  } catch {
+  } catch (error) {
+    recordDiagnostic("storage", `读取 ${key} 失败`, error instanceof Error ? error.message : String(error));
     return undefined;
   }
 }
@@ -22,7 +25,8 @@ function fallbackRead<T>(key: string) {
 function fallbackWrite<T>(key: string, value: T) {
   try {
     localStorage.setItem(key, JSON.stringify(value));
-  } catch {
+  } catch (error) {
+    recordDiagnostic("storage", `写入 ${key} 失败`, error instanceof Error ? error.message : String(error));
     return;
   }
 }
@@ -30,7 +34,8 @@ function fallbackWrite<T>(key: string, value: T) {
 function fallbackDelete(key: string) {
   try {
     localStorage.removeItem(key);
-  } catch {
+  } catch (error) {
+    recordDiagnostic("storage", `删除 ${key} 失败`, error instanceof Error ? error.message : String(error));
     return;
   }
 }
@@ -100,6 +105,7 @@ export async function readPersistentValue<T>(key: string): Promise<T | undefined
       request.onerror = () => reject(request.error || new Error(`Failed to read ${key}.`));
     });
   } catch {
+    recordDiagnostic("storage", `读取 ${key} 失败`, "IndexedDB / localStorage fallback");
     return fallbackRead<T>(key);
   }
 }
@@ -134,6 +140,7 @@ export async function writePersistentValue<T>(key: string, value: T): Promise<vo
       });
     });
   } catch {
+    recordDiagnostic("storage", `写入 ${key} 失败`, "IndexedDB / localStorage fallback");
     fallbackWrite(key, value);
   }
 }
@@ -168,6 +175,7 @@ export async function deletePersistentValue(key: string): Promise<void> {
       });
     });
   } catch {
+    recordDiagnostic("storage", `删除 ${key} 失败`, "IndexedDB / localStorage fallback");
     fallbackDelete(key);
   }
 }

@@ -12,6 +12,16 @@ import {
 import type { EnemyTurnResult } from "../combat";
 import { advanceWorldLocally, applyPatchToState, mergeGamePatches } from "../engine";
 import {
+  CHECK_DOCK_INFILTRATION,
+  CHECK_FINAL_PREP,
+  CHECK_GUSU_LEDGER,
+  CHECK_HAN_DU,
+  CHECK_MURONG_TRACE,
+  CHECK_SAVE_INNKEEPER,
+  CHECK_SHAOSHI_YANMEN,
+  CHECK_STEADY_INN,
+  CHECK_TRACK_SCHOLAR,
+  CHECK_XINGXIU_TRAIL,
   buildNamelessTutorialCompletionPatch,
   buildNamelessTutorialObjective,
   isNamelessTutorialCombatStage,
@@ -27,6 +37,7 @@ import {
   QUEST_WANDERER_7,
   QUEST_WANDERER_8,
   QUEST_WANDERER_9,
+  type StoryCheckId,
   resolveNamelessStoryTrigger
 } from "../story/namelessWanderer";
 import { resolveMartialArtStoryAction } from "../story/martialArtRoutes";
@@ -205,13 +216,79 @@ function buildOriginOpeningPatch(state: GameState): GamePatch | undefined {
   };
 }
 
+function resolveNamelessPendingCheckId(state: GameState): StoryCheckId | undefined {
+  const check = state.pendingCheck;
+  if (!check) return undefined;
+  switch (check.checkId) {
+    case CHECK_STEADY_INN:
+    case CHECK_TRACK_SCHOLAR:
+    case CHECK_SAVE_INNKEEPER:
+    case CHECK_GUSU_LEDGER:
+    case CHECK_MURONG_TRACE:
+    case CHECK_DOCK_INFILTRATION:
+    case CHECK_SHAOSHI_YANMEN:
+    case CHECK_XINGXIU_TRAIL:
+    case CHECK_HAN_DU:
+    case CHECK_FINAL_PREP:
+      return check.checkId;
+    default:
+      break;
+  }
+
+  switch (check.label) {
+    case "替客栈压住前堂乱局":
+      return CHECK_STEADY_INN;
+    case "追上山道里的书生":
+      return CHECK_TRACK_SCHOLAR;
+    case "救下客栈掌柜":
+      return CHECK_SAVE_INNKEEPER;
+    case "核对姑苏水路暗记":
+      return CHECK_GUSU_LEDGER;
+    case "燕子坞辨招":
+      return CHECK_MURONG_TRACE;
+    case "夜探姑苏码头":
+      return CHECK_DOCK_INFILTRATION;
+    case "少室雁门借势":
+      return CHECK_SHAOSHI_YANMEN;
+    case "追入星宿海":
+      return CHECK_XINGXIU_TRAIL;
+    case "压住寒毒前局":
+      return CHECK_HAN_DU;
+    case "终战前整备":
+      return CHECK_FINAL_PREP;
+    default:
+      return undefined;
+  }
+}
+
 function resolvePendingStoryCheck(
   state: GameState,
   globalUpdate: boolean,
   hit: ReturnType<typeof parseCombatHitResult>
 ): WorldResolution {
   const label = state.pendingCheck?.label;
+  const checkId = resolveNamelessPendingCheckId(state);
   const success = hit.success;
+
+  if (checkId) {
+    const trigger = success
+      ? { kind: "story_check_passed" as const, checkId }
+      : { kind: "story_check_failed" as const, checkId };
+
+    const textId =
+      checkId === CHECK_STEADY_INN
+        ? (success ? "story_check_inn_success" : "story_check_inn_fail")
+        : checkId === CHECK_TRACK_SCHOLAR
+          ? (success ? "story_check_mountain_success" : "story_check_mountain_fail")
+          : checkId === CHECK_SAVE_INNKEEPER
+            ? (success ? "story_check_innkeeper_success" : "story_check_innkeeper_fail")
+            : (success ? "story_check_generic_success" : "story_check_generic_fail");
+
+    return {
+      textId,
+      patch: resolveStoryPatch(state, globalUpdate, trigger, { pendingCheck: undefined })
+    };
+  }
 
   if (label === "替客栈压住前堂乱局") {
     return {

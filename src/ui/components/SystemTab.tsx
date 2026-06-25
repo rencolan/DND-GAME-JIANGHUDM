@@ -2,6 +2,7 @@ import { Download, Sparkles, Upload, Volume2, VolumeX } from "lucide-react";
 import { useState, type ChangeEvent, type MutableRefObject } from "react";
 import { enemyPresets, martialArtCatalog, studySourceRegistry } from "../../data";
 import type { ApiConfig, GameState, StudyRouteKey, StudyTier } from "../../types";
+import { clearDiagnostics, readDiagnostics } from "../diagnostics";
 import { DS_FLASH_MODEL, DS_PRO_MODEL, PROVIDER_DEFAULTS, PROVIDER_OPTIONS } from "../sessionShared";
 import type { ApiTestState } from "../sessionTypes";
 
@@ -79,6 +80,8 @@ export function SystemTab({
   const [selectedInternalArtId, setSelectedInternalArtId] = useState(internalArts[0]?.id || "");
   const [devUnlockClicks, setDevUnlockClicks] = useState(0);
   const [devPanelUnlocked, setDevPanelUnlocked] = useState(false);
+  const [, setDiagnosticsRefresh] = useState(0);
+  const diagnostics = readDiagnostics();
 
   function handleDevUnlockClick() {
     if (devPanelUnlocked) return;
@@ -153,6 +156,32 @@ export function SystemTab({
 
   return (
     <section className="system-panel">
+      <article className="system-section">
+        <header>
+          <b>最近诊断</b>
+          <span>黑屏、异常、存储失败都会记录在这里。</span>
+        </header>
+        <section className="save-panel">
+          <button
+            type="button"
+            onClick={() => {
+              clearDiagnostics();
+              setDiagnosticsRefresh((value) => value + 1);
+            }}
+          >
+            清除诊断
+          </button>
+          <p>{diagnostics.length ? `最近 ${Math.min(6, diagnostics.length)} 条记录如下。` : "当前没有诊断记录。"}</p>
+          {diagnostics.slice(-6).map((entry) => (
+            <article key={entry.id} className="dev-simple-item">
+              <strong>{entry.kind}</strong>
+              <span>{new Date(entry.at).toLocaleString()}</span>
+              <small>{entry.message}{entry.detail ? ` · ${entry.detail}` : ""}</small>
+            </article>
+          ))}
+        </section>
+      </article>
+
       <article className="system-section">
         <header>
           <b className="hidden-dev-trigger" onClick={handleDevUnlockClick}>接口设置</b>

@@ -28,16 +28,16 @@ export const QUEST_WANDERER_12 = "quest-wanderer-12";
 
 const ROUTE_SHUANGER = "shuang-er";
 const ROUTE_AZI = "a-zi";
-const CHECK_STEADY_INN = "steady_inn";
-const CHECK_TRACK_SCHOLAR = "track_scholar";
-const CHECK_SAVE_INNKEEPER = "save_innkeeper";
-const CHECK_GUSU_LEDGER = "gusu_ledger";
-const CHECK_MURONG_TRACE = "murong_trace";
-const CHECK_DOCK_INFILTRATION = "dock_infiltration";
-const CHECK_SHAOSHI_YANMEN = "shaoshi_yanmen";
-const CHECK_XINGXIU_TRAIL = "xingxiu_trail";
-const CHECK_HAN_DU = "han_du";
-const CHECK_FINAL_PREP = "final_prep";
+export const CHECK_STEADY_INN = "steady_inn";
+export const CHECK_TRACK_SCHOLAR = "track_scholar";
+export const CHECK_SAVE_INNKEEPER = "save_innkeeper";
+export const CHECK_GUSU_LEDGER = "gusu_ledger";
+export const CHECK_MURONG_TRACE = "murong_trace";
+export const CHECK_DOCK_INFILTRATION = "dock_infiltration";
+export const CHECK_SHAOSHI_YANMEN = "shaoshi_yanmen";
+export const CHECK_XINGXIU_TRAIL = "xingxiu_trail";
+export const CHECK_HAN_DU = "han_du";
+export const CHECK_FINAL_PREP = "final_prep";
 const CHOICE_ACCEPT_SHUANGER = "accept_shuang_er";
 const CHOICE_DECLINE_SHUANGER = "decline_shuang_er";
 const CHOICE_TRUST_AZI = "trust_a_zi";
@@ -61,7 +61,7 @@ type MainQuestBlueprint = {
   stage: NamelessWandererChapterStage;
 };
 
-type StoryCheckId =
+export type StoryCheckId =
   | typeof CHECK_STEADY_INN
   | typeof CHECK_TRACK_SCHOLAR
   | typeof CHECK_SAVE_INNKEEPER
@@ -415,9 +415,10 @@ function withStudyRewards(state: GameState, base: GamePatch, routeIds: string[],
   return routeIds.reduce((patch, routeId) => mergeRewardPatch(patch, buildStudyRouteReward(state, routeId, options)), base);
 }
 
-function buildCheck(label: string, dc: number, abilityKey: PendingCheck["abilityKey"], reason: string, risk: string, suggestedAction: string): GamePatch {
+function buildCheck(checkId: StoryCheckId, label: string, dc: number, abilityKey: PendingCheck["abilityKey"], reason: string, risk: string, suggestedAction: string): GamePatch {
   return {
     pendingCheck: {
+      checkId,
       label,
       abilityKey,
       dc,
@@ -697,16 +698,16 @@ function resolveUseClue(state: GameState, clueId: string): GamePatch | undefined
 function resolveStoryCheckRequested(state: GameState, checkId: StoryCheckId): GamePatch | undefined {
   if (state.chapterState.id !== NAMELESS_WANDERER_CHAPTER_ID) return undefined;
   const checks: Record<StoryCheckId, GamePatch> = {
-    [CHECK_STEADY_INN]: buildCheck("替客栈压住前堂乱局", 12, "cha", "前堂后院都有人心浮动，你得让闹事的人闭嘴，也让店里的人重新各归其位。", "若失败，掌柜会看轻你，双儿也会替你担心。", "可以硬压场面，也可借机说服、喝住或拆开闹事的人。"),
-    [CHECK_TRACK_SCHOLAR]: buildCheck("追上山道里的书生", 13, "dex", "山道窄得只能容两三人并肩，再慢半步，就只剩凌乱脚印。", "若失败，你会落后一程，下一场冲突更被动。", "先用身法追上，也可借地形抄近一步。"),
-    [CHECK_SAVE_INNKEEPER]: buildCheck("救下客栈掌柜", 14, "dex", "闹事的人来得又快又狠，你若慢半步，掌柜和客栈都会出事。", "若失败，掌柜会受伤，双儿也会被卷进去。", "先抢身位护住掌柜，也可借桌椅门框拆掉对方来势。"),
-    [CHECK_GUSU_LEDGER]: buildCheck("核对姑苏水路暗记", 13, "int", "水路暗记故意写得半明半暗，需要把阿朱的见闻和账页一处处对上。", "若失败，线索仍会推进，但会给对方更多反应时间。", "请阿朱辨记号，再请王语嫣看招式门路。"),
-    [CHECK_MURONG_TRACE]: buildCheck("燕子坞辨招", 14, "int", "剑痕、指劲、毒功和刀气夹在一处，得拆清哪条是真线。", "若失败，你会误判一部分威胁，终章压力提高。", "请王语嫣拆招，也可自己按武学痕迹推演。"),
-    [CHECK_DOCK_INFILTRATION]: buildCheck("夜探姑苏码头", 15, "dex", "水雾里有人接头，潜得越近，越能拿到真东西。", "若失败，会直接惊动码头刺客。", "用身法潜入，或借阿朱易容绕过眼线。"),
-    [CHECK_SHAOSHI_YANMEN]: buildCheck("少室雁门借势", 14, "cha", "虚竹和乔峰都不是随便会被说动的人，你得把来龙去脉讲明。", "若失败，仍能得到线索，但少一分人心助力。", "先讲星宿毒功，再讲英雄帖伪稿。"),
-    [CHECK_XINGXIU_TRAIL]: buildCheck("追入星宿海", 15, "wis", "星宿海风向、毒雾和人心都不正，最怕自己先乱。", "若失败，你会带着毒伤进入下一阶段。", "稳住心神，辨毒雾方向，再判断阿紫话里真假。"),
-    [CHECK_HAN_DU]: buildCheck("压住寒毒前局", 15, "con", "游坦之身上的寒毒硬缠，不能被他拖到真气乱流。", "若失败，终战会带着更重内伤。", "以根骨硬撑，或用护心调息先压毒。"),
-    [CHECK_FINAL_PREP]: buildCheck("终战前整备", 14, "wis", "丁春秋要打的是你的内息和心神，终战前必须把护心解毒散与武学线索理清。", "若失败，也能开战，但会少一层防护。", "整理护心解毒散、化功残篇和可用同伴助力。")
+    [CHECK_STEADY_INN]: buildCheck(CHECK_STEADY_INN, "替客栈压住前堂乱局", 12, "cha", "前堂后院都有人心浮动，你得让闹事的人闭嘴，也让店里的人重新各归其位。", "若失败，掌柜会看轻你，双儿也会替你担心。", "可以硬压场面，也可借机说服、喝住或拆开闹事的人。"),
+    [CHECK_TRACK_SCHOLAR]: buildCheck(CHECK_TRACK_SCHOLAR, "追上山道里的书生", 13, "dex", "山道窄得只能容两三人并肩，再慢半步，就只剩凌乱脚印。", "若失败，你会落后一程，下一场冲突更被动。", "先用身法追上，也可借地形抄近一步。"),
+    [CHECK_SAVE_INNKEEPER]: buildCheck(CHECK_SAVE_INNKEEPER, "救下客栈掌柜", 14, "dex", "闹事的人来得又快又狠，你若慢半步，掌柜和客栈都会出事。", "若失败，掌柜会受伤，双儿也会被卷进去。", "先抢身位护住掌柜，也可借桌椅门框拆掉对方来势。"),
+    [CHECK_GUSU_LEDGER]: buildCheck(CHECK_GUSU_LEDGER, "核对姑苏水路暗记", 13, "int", "水路暗记故意写得半明半暗，需要把阿朱的见闻和账页一处处对上。", "若失败，线索仍会推进，但会给对方更多反应时间。", "请阿朱辨记号，再请王语嫣看招式门路。"),
+    [CHECK_MURONG_TRACE]: buildCheck(CHECK_MURONG_TRACE, "燕子坞辨招", 14, "int", "剑痕、指劲、毒功和刀气夹在一处，得拆清哪条是真线。", "若失败，你会误判一部分威胁，终章压力提高。", "请王语嫣拆招，也可自己按武学痕迹推演。"),
+    [CHECK_DOCK_INFILTRATION]: buildCheck(CHECK_DOCK_INFILTRATION, "夜探姑苏码头", 15, "dex", "水雾里有人接头，潜得越近，越能拿到真东西。", "若失败，会直接惊动码头刺客。", "用身法潜入，或借阿朱易容绕过眼线。"),
+    [CHECK_SHAOSHI_YANMEN]: buildCheck(CHECK_SHAOSHI_YANMEN, "少室雁门借势", 14, "cha", "虚竹和乔峰都不是随便会被说动的人，你得把来龙去脉讲明。", "若失败，仍能得到线索，但少一分人心助力。", "先讲星宿毒功，再讲英雄帖伪稿。"),
+    [CHECK_XINGXIU_TRAIL]: buildCheck(CHECK_XINGXIU_TRAIL, "追入星宿海", 15, "wis", "星宿海风向、毒雾和人心都不正，最怕自己先乱。", "若失败，你会带着毒伤进入下一阶段。", "稳住心神，辨毒雾方向，再判断阿紫话里真假。"),
+    [CHECK_HAN_DU]: buildCheck(CHECK_HAN_DU, "压住寒毒前局", 15, "con", "游坦之身上的寒毒硬缠，不能被他拖到真气乱流。", "若失败，终战会带着更重内伤。", "以根骨硬撑，或用护心调息先压毒。"),
+    [CHECK_FINAL_PREP]: buildCheck(CHECK_FINAL_PREP, "终战前整备", 14, "wis", "丁春秋要打的是你的内息和心神，终战前必须把护心解毒散与武学线索理清。", "若失败，也能开战，但会少一层防护。", "整理护心解毒散、化功残篇和可用同伴助力。")
   };
   return checks[checkId];
 }

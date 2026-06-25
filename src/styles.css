@@ -3775,3 +3775,88 @@ button {
     transition-duration: .01ms !important;
   }
 }
+
+.app-error-shell {
+  min-height: 100svh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  color: var(--text);
+  background:
+    radial-gradient(circle at 25% 10%, rgba(142, 91, 42, .32), transparent 34%),
+    linear-gradient(135deg, #160f0a, #080604 70%);
+}
+
+.app-error-card {
+  width: min(720px, 100%);
+  display: grid;
+  gap: 14px;
+  padding: 22px;
+  border: 1px solid rgba(213, 74, 62, .68);
+  border-radius: 16px;
+  background: rgba(23, 13, 10, .92);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, .45);
+}
+
+.app-error-card > span {
+  color: #f1a28e;
+  font-size: 13px;
+  letter-spacing: .16em;
+}
+
+.app-error-card > b {
+  color: var(--gold-2);
+  font-size: 22px;
+}
+
+.app-error-card p,
+.app-error-card small {
+  margin: 0;
+  color: rgba(244, 231, 199, .86);
+  line-height: 1.55;
+}
+
+.app-error-card pre {
+  max-height: 220px;
+  overflow: auto;
+  padding: 12px;
+  border: 1px solid rgba(242, 212, 141, .2);
+  border-radius: 10px;
+  color: rgba(244, 231, 199, .78);
+  background: rgba(0, 0, 0, .28);
+  white-space: pre-wrap;
+}
+
+.app-error-diagnostics {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid rgba(242, 212, 141, .22);
+  border-radius: 12px;
+  background: rgba(0, 0, 0, .2);
+}
+
+.app-error-diagnostics div {
+  display: grid;
+  gap: 2px;
+}
+
+.app-error-diagnostics span {
+  color: var(--gold-2);
+  font-size: 12px;
+}
+
+.app-error-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.app-error-actions button {
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid rgba(242, 212, 141, .42);
+  border-radius: 10px;
+  color: var(--text);
+  background: rgba(142, 91, 42, .36);
+}

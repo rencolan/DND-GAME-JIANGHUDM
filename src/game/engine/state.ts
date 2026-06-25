@@ -397,6 +397,7 @@ function makePendingCheck(raw: GamePatch["pendingCheck"]): PendingCheck | undefi
   if (!raw?.label || typeof raw.dc !== "number") return undefined;
   return {
     id: uid("check"),
+    checkId: raw.checkId,
     kind: raw.kind,
     label: raw.label,
     abilityKey: raw.abilityKey,
@@ -1108,7 +1109,13 @@ export function applyPatchToState(prev: GameState, patch: GamePatch): GameState 
   }
   if (!next.combat.active) {
     next.pendingDamage = undefined;
-    next.pendingCheck = undefined;
+    if (
+      next.pendingCheck?.kind === "initiative" ||
+      next.pendingCheck?.kind === "combat_attack" ||
+      next.pendingCheck?.kind === "combat_escape"
+    ) {
+      next.pendingCheck = undefined;
+    }
     next.combat.phase = "ended";
   }
   next.questStateMap = normalizeQuestStateMap(next.quests, next.questStateMap);
