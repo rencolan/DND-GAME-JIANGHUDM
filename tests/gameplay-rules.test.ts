@@ -7,6 +7,7 @@ import { buildSuggestedCheck, normalizeWorldCheckAbility, parseCombatDamageResul
 import { resolveWorldAction } from "../src/game/world/resolveWorldAction";
 import { buildLocationOpportunities } from "../src/game/world/opportunities";
 import { makeAbilityChoices } from "../src/ui/sessionShared";
+import { resolveMessageVisuals } from "../src/ui/visuals/messageVisualResolver";
 import type { GameState } from "../src/types";
 
 function cloneState(overrides: Partial<GameState> = {}) {
@@ -130,6 +131,21 @@ test("combat pending checks still clear when combat ends", () => {
   const patched = applyPatchToState(state, {});
 
   assert.equal(patched.pendingCheck, undefined);
+});
+
+test("message visuals tolerate missing scene type assets", () => {
+  const state = cloneState();
+  const visuals = resolveMessageVisuals(
+    { id: "message-visual-test", role: "dm", text: "你走进客栈，前堂人声嘈杂。" },
+    {
+      npcs: [],
+      locations: state.locations,
+      sceneType: "unknown-scene" as never,
+      currentLocationName: "荒野"
+    }
+  );
+
+  assert.deepEqual(visuals, []);
 });
 
 test("world check dc responds to clue quality and method", () => {

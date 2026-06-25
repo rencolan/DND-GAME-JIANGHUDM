@@ -62,6 +62,7 @@ function resolveLocationVisual(text: string, context: MessageVisualContext): Mes
   if (!targetLocation) return undefined;
 
   const visual = locationSceneVisuals[targetLocation.id] || sceneTypeVisuals[context.sceneType];
+  if (!visual) return undefined;
   return {
     id: `scene:${targetLocation.id}`,
     kind: "scene",
@@ -75,6 +76,7 @@ function resolveLocationVisual(text: string, context: MessageVisualContext): Mes
 
 function resolveSceneTypeVisual(text: string, context: MessageVisualContext): MessageVisual | undefined {
   const scene = sceneTypeVisuals[context.sceneType];
+  if (!scene) return undefined;
   const aliases = [sceneLabels[context.sceneType], ...scene.aliases];
   if (!textIncludesAny(text, aliases)) return undefined;
 
